@@ -169,13 +169,13 @@ The scaffold provides `extended_set_ups.h`, which holds many common magic number
 
 Most inbuilt 12d library calls return 0 for success, so I tend to define `#define SUCCESS 0`, and use that for my functions. For generic failures, I use `#define FAILURE -1`. However if different modes of failure are important to know, implement additional object-like pre-processor macros to suit. Failure `return` codes are negative.
 
-## Architecture
+### Architecture
 
 Typical 12d panels are structured to  revolve around `Wait_on_events(Integer64 id, Text cmd, Text msg)`. The scaffold has an implemented custom event queue, so that the entire macro can be event-based, rather than just the GUI elements. Event based architecture is preferred for looser coupling.
 
 In further pursuit of loose coupling, macros should obey Model-View-Controller architecture.
 
-## Honest / Dishonest Functions
+### Honest / Dishonest Functions
 
 A function is honest if the data it accesses is limited to it's parameters, and is dishonest if it does not. An example of an honest function would be `To_text(Integer)`, which accesses nothing but the parameter provided. An example of a dishonest function would be Print(), which writes to the output window. Another dishonest function would be `Get_time().`
 Where possible, prioritise creating honest functions. For performance-critical code it might be permissible to ignore this.
@@ -185,6 +185,28 @@ Where possible, prioritise creating honest functions. For performance-critical c
 The macro language does not have `struct`s, but it does have `Attributes`. `Model`s, `Element`s, projects, macros and `Attributes` themselves can have `Attributes`. Attributes have names, positions and a value, unless they are a group Attribute. The value can be `Text`, `Guid`, `Uid`, `Real`, `Integer` and `Integer64`. I don't know what an `Attribute_Blob` is but supposedly those too.
 The point being made is that `Attributes` can act as a substitute for `struct`s since they allow for a group of values to be passed around, each with a unique name. Custom accessor functions can be written for each mock-`struct` to simulate `struct`s. These mock-`struct`s would be capable of "member" mock-`struct`s, which is powerful. `Attributes` are also easy to store and debug.
  For non-performance-critical code, the use is highly encouraged.
+
+### Comparisons
+
+Prioritise switches over comparisons, especially always for mock-`enum` situations. Recall that text can be used in `switch`es.
+
+### Appending
+
+When constructing a panel, order and format the appending to match the actual layout, like so:
+```
+Append(vgroup, panel);
+{
+  Append(info_box, vgroup);
+  Append(message , vgroup);
+  Append(bgroup  , vgroup);
+  {
+    Append(bn_retry , bgroup);
+    Append(bn_ignore, bgroup);
+    Append(bn_stop  , bgroup);
+  }
+}
+```
+
 
 ## Debugging
 
