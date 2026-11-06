@@ -1,13 +1,24 @@
 name: Release
 
-# Push a tag matching the version in extension/package.json (e.g. v0.1.0)
-# to test, package and publish the extension as a GitHub Release.
+# Publishes the extension as a GitHub Release with the .vsix attached.
+#
+# - Every push to main: if there is no release yet for the version in
+#   extension/package.json, test, package and release it (tag v<version>).
+#   So bumping "version" and merging is all a new release needs.
+# - Pushing a tag v<version> by hand does the same for that tag.
+# - "Run workflow" on the Actions tab does the same for the current main.
 on:
   push:
+    branches: [main]
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -18,31 +29,49 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Work out version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match extension/package.json version $version. Bump the version or fix the tag."
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists. Bump \"version\" in extension/package.json to publish a new one."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@v4
+        if: steps.version.outputs.publish == 'true'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: extension/package-lock.json
 
-      - run: npm ci
+      - if: steps.version.outputs.publish == 'true'
+        run: npm ci
 
-      - name: Check tag matches package.json version
-        run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match extension/package.json version $version. Bump the version or fix the tag."
-            exit 1
-          fi
-
-      - run: npm test
+      - if: steps.version.outputs.publish == 'true'
+        run: npm test
 
       - name: Package .vsix
-        run: npx --yes @vscode/vsce@3.2.1 package --skip-license -o "12dpl-debugger-$GITHUB_REF_NAME.vsix"
+        if: steps.version.outputs.publish == 'true'
+        run: npx --yes @vscode/vsce@3.2.1 package --skip-license -o "12dpl-debugger-${{ steps.version.outputs.tag }}.vsix"
 
       - name: Publish release
+        if: steps.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: >
-          gh release create "$GITHUB_REF_NAME" "12dpl-debugger-$GITHUB_REF_NAME.vsix"
-          --title "12dPL Debugger $GITHUB_REF_NAME"
+          gh release create "$TAG" "12dpl-debugger-$TAG.vsix"
+          --target "$GITHUB_SHA"
+          --title "12dPL Debugger $TAG"
           --generate-notes

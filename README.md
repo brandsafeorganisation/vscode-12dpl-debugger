@@ -82,17 +82,9 @@ after 5 seconds, prints a note and runs normally.
 
 Ready-built `.vsix` files are attached to each [GitHub Release](https://github.com/georgegunterorg/vscode-12dpl-debugger/releases).
 
-To publish a release, set `"version"` in `extension/package.json` (for example `0.2.0`), merge that to `main`, then tag it:
+Releases are automatic. Whenever `main` changes, the **Release** workflow (`.github/workflows/release.yml`) checks the `"version"` in `extension/package.json`. If there is no release for that version yet, it runs the tests, packages the extension and publishes release `v<version>` with `12dpl-debugger-v<version>.vsix` attached. If that version is already released, it does nothing.
 
-```bash
-git tag v0.2.0
-```
-
-```bash
-git push origin v0.2.0
-```
-
-The **Release** workflow (`.github/workflows/release.yml`) then runs the tests, packages the extension and attaches `12dpl-debugger-v0.2.0.vsix` to a new release. It fails if the tag doesn't match the version in `package.json`.
+So to publish a new release, bump `"version"` (for example to `0.2.0`) and merge. You can also start it from **Actions → Release → Run workflow**, or push a `v<version>` tag yourself.
 
 To build a `.vsix` yourself instead, run this in `extension/`:
 
