@@ -4,9 +4,11 @@
 // Channel (all files live in the session directory):
 //   macro -> adapter   m2a_<n>.txt, then an empty-ish m2a_<n>.ready marker
 //   adapter -> macro   a2m_<n>.txt, then a2m_<n>.ready
+// Macro messages are UTF-8 with a BOM (so Text values keep any character);
+// adapter messages are plain ASCII, read by the macro as ANSI.
 // n counts up from 1 in each direction. The writer always finishes the .txt
 // before creating the .ready marker, so the reader never sees half a message.
-// Each side deletes the files it has read (the macro with Delete_files), and
+// Each side deletes the files it has read (the macro with File_delete), and
 // the adapter wipes the folder at each launch.
 //
 // macro -> adapter messages (first line is the kind):
@@ -76,7 +78,7 @@ Text dbg12d_path(Text p_prefix, Integer p_seq, Text p_ext)
 Integer dbg12d_begin_message(Text p_kind)
 {
   dbg12d_g_out_seq = dbg12d_g_out_seq + 1;
-  File_open(dbg12d_path("m2a_", dbg12d_g_out_seq, ".txt"), "w", "", dbg12d_g_out);
+  File_open(dbg12d_path("m2a_", dbg12d_g_out_seq, ".txt"), "w", "ccs=UTF-8", dbg12d_g_out);
   File_write_line(dbg12d_g_out, p_kind);
   return 0;
 }
@@ -102,8 +104,8 @@ Integer dbg12d_word(Dynamic_Text &p_words, Integer p_index, Integer &p_value)
 
 Integer dbg12d_delete_command(Integer p_seq)
 {
-  Delete_files(dbg12d_path("a2m_", p_seq, ".txt"));
-  Delete_files(dbg12d_path("a2m_", p_seq, ".ready"));
+  File_delete(dbg12d_path("a2m_", p_seq, ".txt"));
+  File_delete(dbg12d_path("a2m_", p_seq, ".ready"));
   return 0;
 }
 
