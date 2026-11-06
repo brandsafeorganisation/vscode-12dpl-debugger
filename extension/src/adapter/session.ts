@@ -6,7 +6,8 @@ import {
   TerminatedEvent, Thread,
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
-import { instrumentProgram, InstrumentedFile, RUNTIME_FILE_NAME } from '../instrumenter/instrument';
+import { INSPECTORS_FILE_NAME, instrumentProgram, InstrumentedFile, RUNTIME_FILE_NAME } from '../instrumenter/instrument';
+import { generateInspectors, resolveInspectors } from '../instrumenter/inspectors';
 import { generateRuntime } from '../instrumenter/runtime';
 import { FileChannel, MacroMessage, Variable } from './channel';
 
@@ -16,6 +17,12 @@ export interface LaunchArgs extends DebugProtocol.LaunchRequestArguments {
   stopOnEntry?: boolean;
   compileCommand?: string;
   pollIntervalMs?: number;
+  /** Inspector signatures for non-text types, e.g. "Integer Get_name(Element elt, Text &name)". */
+  inspectors?: string[];
+  /** How many levels of inspector members to expand. */
+  inspectDepth?: number;
+  /** Extra folders to search for quoted #includes. */
+  includePaths?: string[];
 }
 
 const THREAD_ID = 1;
@@ -37,6 +44,8 @@ export class TwelveDDebugSession extends DebugSession {
   private lastStop: Extract<MacroMessage, { kind: 'stopped' }> | undefined;
   private configurationDone: Promise<void>;
   private resolveConfigurationDone!: () => void;
+  /** Expandable variables of the current stop: reference -> scope and name prefix. */
+  private children = new Map<number, { scope: 'L' | 'G'; name: string }>();
 
   constructor() {
     super();
@@ -126,10 +135,12 @@ export class TwelveDDebugSession extends DebugSession {
       if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
         throw new Error(`outDir (${outDir}) must not contain the program; it is deleted on every launch.`);
       }
+      const inspectors = resolveInspectors(args.inspectors ?? []);
       fs.rmSync(outDir, { recursive: true, force: true });
-      const result = instrumentProgram(program, outDir);
+      const result = instrumentProgram(program, outDir, { inspectors, includePaths: args.includePaths });
       this.files = result.files;
-      fs.writeFileSync(path.join(outDir, RUNTIME_FILE_NAME), generateRuntime({ sessionDir }));
+      fs.writeFileSync(path.join(outDir, RUNTIME_FILE_NAME), generateRuntime({ sessionDir, inspectors, inspectDepth: args.inspectDepth }));
+      fs.writeFileSync(path.join(outDir, INSPECTORS_FILE_NAME), generateInspectors(inspectors));
       for (const w of result.warnings) this.log('warning: ' + w, 'stderr');
 
       for (const [p, bps] of this.pendingBreakpoints) this.applyBreakpoints(p, bps);
@@ -209,14 +220,52 @@ export class TwelveDDebugSession extends DebugSession {
     this.sendResponse(response);
   }
 
+  /** Direct members of an inspected variable (names "<parent>.<member>"). */
+  private membersOf(scope: 'L' | 'G', parent: string): Variable[] {
+    const prefix = parent + '.';
+    return (this.lastStop?.variables ?? []).filter(
+      (v) => v.scope === scope && v.name.startsWith(prefix) && !v.name.slice(prefix.length).includes('.'));
+  }
+
+  /** Value as shown in VS Code; inspected values summarise their members. */
+  private formatValue(v: Variable): string {
+    if (v.type === '!') return `<${v.value}>`;
+    if (v.type === 'Text') return JSON.stringify(v.value);
+    if (v.value !== '') return v.value;
+    const members = this.membersOf(v.scope, v.name);
+    if (members.length === 0) return `<${v.type}>`;
+    let summary = members.map((m) => `${m.name.slice(v.name.length + 1)}: ${this.formatValue(m)}`).join(', ');
+    if (summary.length > 120) summary = summary.slice(0, 117) + '...';
+    return `${v.type} {${summary}}`;
+  }
+
   private toDap(v: Variable): DebugProtocol.Variable {
-    const value = v.type === 'Text' ? JSON.stringify(v.value) : v.value === '' ? `<${v.type}>` : v.value;
-    return { name: v.name, value, type: v.type, variablesReference: 0 };
+    const members = v.value === '' ? this.membersOf(v.scope, v.name) : [];
+    const shortName = v.name.slice(v.name.lastIndexOf('.') + 1);
+    if (members.length === 0) {
+      return { name: shortName, value: this.formatValue(v), type: v.type, variablesReference: 0, evaluateName: v.name };
+    }
+    let ref = [...this.children].find(([, c]) => c.scope === v.scope && c.name === v.name)?.[0];
+    if (ref === undefined) {
+      ref = this.children.size + 3;
+      this.children.set(ref, { scope: v.scope, name: v.name });
+    }
+    return {
+      name: shortName, value: this.formatValue(v), type: v.type,
+      variablesReference: ref, namedVariables: members.length, evaluateName: v.name,
+    };
   }
 
   protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
-    const scope = args.variablesReference === LOCALS_REF ? 'L' : 'G';
-    const vars = (this.lastStop?.variables ?? []).filter((v) => v.scope === scope);
+    const ref = args.variablesReference;
+    let vars: Variable[];
+    if (ref === LOCALS_REF || ref === GLOBALS_REF) {
+      const scope = ref === LOCALS_REF ? 'L' : 'G';
+      vars = (this.lastStop?.variables ?? []).filter((v) => v.scope === scope && !v.name.includes('.'));
+    } else {
+      const parent = this.children.get(ref);
+      vars = parent ? this.membersOf(parent.scope, parent.name) : [];
+    }
     response.body = { variables: vars.map((v) => this.toDap(v)) };
     this.sendResponse(response);
   }
@@ -227,7 +276,7 @@ export class TwelveDDebugSession extends DebugSession {
     const v = vars.find((x) => x.name === name && x.scope === 'L') ?? vars.find((x) => x.name === name);
     if (v && (args.frameId === undefined || args.frameId === 0)) {
       const d = this.toDap(v);
-      response.body = { result: d.value, type: d.type, variablesReference: 0 };
+      response.body = { result: d.value, type: d.type, variablesReference: d.variablesReference, namedVariables: d.namedVariables };
       this.sendResponse(response);
     } else {
       this.sendErrorResponse(response, 2, args.context === 'hover' ? '' : `Only captured variable names can be evaluated (no "${name}").`);
@@ -241,6 +290,7 @@ export class TwelveDDebugSession extends DebugSession {
     }
     this.state = 'running';
     this.lastStop = undefined;
+    this.children.clear();
     this.send([command]);
     this.sendResponse(response);
   }
@@ -284,8 +334,12 @@ export class TwelveDDebugSession extends DebugSession {
     const known = file?.variables[top.line];
     if (!known) return;
     const sent = new Map(m.variables.map((v) => [v.scope + ' ' + v.name, v]));
-    m.variables = known.map((k) =>
-      sent.get(k.scope + ' ' + k.name) ?? { scope: k.scope, type: k.type + (k.isArray ? '[]' : ''), name: k.name, value: '' });
+    m.variables = [
+      ...known.map((k) =>
+        sent.get(k.scope + ' ' + k.name) ?? { scope: k.scope, type: k.type + (k.isArray ? '[]' : ''), name: k.name, value: '' }),
+      // Members of inspected values.
+      ...m.variables.filter((v) => v.name.includes('.')),
+    ];
   }
 
   private onMacroMessage(m: MacroMessage) {
@@ -298,6 +352,7 @@ export class TwelveDDebugSession extends DebugSession {
       case 'stopped':
         this.addUncapturedVariables(m);
         this.lastStop = m;
+        this.children.clear();
         this.state = 'stopped';
         this.sendEvent(new StoppedEvent(m.reason === 'step' && this.stopOnEntry && !this.hasStopped ? 'entry' : m.reason, THREAD_ID));
         this.hasStopped = true;

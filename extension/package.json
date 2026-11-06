@@ -2,7 +2,7 @@
   "name": "12dpl-debugger",
   "displayName": "12dPL Debugger",
   "description": "Step-through debugging for 12d Model macros (12dPL) via source instrumentation and the Debug Adapter Protocol.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "12dpl-debugger",
   "license": "UNLICENSED",
   "repository": {
@@ -55,6 +55,23 @@
                 "type": "number",
                 "description": "How often the adapter checks for messages from 12d.",
                 "default": 30
+              },
+              "inspectors": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Functions that show what is inside a value with no text form, written as 12dPL signatures. The first parameter is the inspected value and each & parameter becomes a member, e.g. \"Integer Get_name(Element elt, Text &name)\". Other parameters can be literals: \"Integer Get_attribute(Element elt, \\\"width\\\", Real &width)\". Inspectors for a type replace the built-in ones for that type (Element: name, type, points, model; Model: name, items).",
+                "default": []
+              },
+              "inspectDepth": {
+                "type": "number",
+                "description": "How many levels of inspected members to expand (an Element's model's members are level 2).",
+                "default": 3
+              },
+              "includePaths": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Extra folders to look in for #include \"...\" files, after the including file's folder and the entry file's folder (e.g. the 12d project folder).",
+                "default": []
               }
             }
           }
