@@ -6,8 +6,8 @@
 //   adapter -> macro   a2m_<n>.txt, then a2m_<n>.ready
 // n counts up from 1 in each direction. The writer always finishes the .txt
 // before creating the .ready marker, so the reader never sees half a message.
-// The macro never deletes anything (12dPL has no single-file delete); the
-// adapter removes files it has read and wipes the folder at each launch.
+// Each side deletes the files it has read (the macro with Delete_files), and
+// the adapter wipes the folder at each launch.
 //
 // macro -> adapter messages (first line is the kind):
 //   started
@@ -100,6 +100,13 @@ Integer dbg12d_word(Dynamic_Text &p_words, Integer p_index, Integer &p_value)
   return From_text(l_word, p_value);
 }
 
+Integer dbg12d_delete_command(Integer p_seq)
+{
+  Delete_files(dbg12d_path("a2m_", p_seq, ".txt"));
+  Delete_files(dbg12d_path("a2m_", p_seq, ".ready"));
+  return 0;
+}
+
 // Reads the next adapter message if it is ready.
 // Returns 1 if it contained a resume command (continue/next/stepIn/stepOut).
 Integer dbg12d_try_read_command()
@@ -151,11 +158,13 @@ Integer dbg12d_try_read_command()
         dbg12d_g_mode = DBG12D_MODE_PAUSE;
       } else if (l_cmd == "terminate") {
         File_close(l_file);
+        dbg12d_delete_command(l_next);
         Exit("Stopped by the debugger");
       }
     }
   }
   File_close(l_file);
+  dbg12d_delete_command(l_next);
   return l_resumed;
 }
 
