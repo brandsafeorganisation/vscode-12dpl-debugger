@@ -5,6 +5,10 @@
   "version": "0.1.0",
   "publisher": "12dpl-debugger",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/georgegunterorg/vscode-12dpl-debugger"
+  },
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Debuggers"],
   "main": "./out/extension.js",
