@@ -25,6 +25,7 @@ The 12d Programming Language (12dPL) uses C-style syntax but varies from C.
 | `#include` searches the local folder                                             | Everything works normally if the compiler is called directly. If it is called indirectly, through the 12d Compile options, the `#include` path in the base file is set to the project directory, hence the need for the following pre-processor logic to handle both cases:<br>`#ifdef __COMPILING_OUTSIDE_12D`<br>`#include "<my_file_path>/example.4dm"`<br>`#else`<br>`#include "example.4dm"`<br>`#endif` |
 
 
+
 ## 12dPL Features
 
 | Feature                                                     |
