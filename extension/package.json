@@ -1,0 +1,98 @@
+{
+  "name": "12dpl-debugger",
+  "displayName": "12dPL Debugger",
+  "description": "Step-through debugging for 12d Model macros (12dPL) via source instrumentation and the Debug Adapter Protocol.",
+  "version": "0.1.0",
+  "publisher": "12dpl-debugger",
+  "license": "UNLICENSED",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Debuggers"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onDebugResolve:12dpl", "onDebugDynamicConfigurations:12dpl"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "12dpl",
+        "aliases": ["12dPL", "12d Macro"],
+        "extensions": [".4dm"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "breakpoints": [{ "language": "12dpl" }],
+    "debuggers": [
+      {
+        "type": "12dpl",
+        "label": "12dPL Macro",
+        "languages": ["12dpl"],
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Entry .4dm file (the one containing main).",
+                "default": "${file}"
+              },
+              "outDir": {
+                "type": "string",
+                "description": "Folder the instrumented copy of the macro is written to. Compile and run the entry file from here.",
+                "default": "${workspaceFolder}/.12dpl-debug"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Pause on the first line of main.",
+                "default": true
+              },
+              "compileCommand": {
+                "type": "string",
+                "description": "Optional shell command run after instrumenting, e.g. a cc4d.exe invocation. ${file} is replaced with the instrumented entry file, ${outDir} with outDir."
+              },
+              "pollIntervalMs": {
+                "type": "number",
+                "description": "How often the adapter checks for messages from 12d.",
+                "default": 30
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "12dpl",
+            "request": "launch",
+            "name": "Debug 12dPL macro",
+            "program": "${file}",
+            "stopOnEntry": true
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "12dPL: Launch",
+            "description": "Instrument a macro and wait for it to be run in 12d Model.",
+            "body": {
+              "type": "12dpl",
+              "request": "launch",
+              "name": "Debug 12dPL macro",
+              "program": "^\"\\${file}\"",
+              "stopOnEntry": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "test": "tsc -p . && node --test out/test/*.test.js",
+    "instrument": "node out/instrumenter/cli.js"
+  },
+  "dependencies": {
+    "@vscode/debugadapter": "^1.65.0",
+    "@vscode/debugprotocol": "^1.65.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "~1.80.0",
+    "typescript": "^5.4.0"
+  }
+}
