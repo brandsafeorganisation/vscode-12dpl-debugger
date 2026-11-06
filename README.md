@@ -80,10 +80,24 @@ launch if `outDir` contains the program.
 If the instrumented macro is run without the debugger listening, it gives up
 after 5 seconds, prints a note and runs normally.
 
-To build an installable `.vsix` (for example, to install on a machine where npm can't run), run this in `extension/`:
+Ready-built `.vsix` files are attached to each [GitHub Release](https://github.com/boytoucher123/12dpl-debugger/releases).
+
+To publish a release, set `"version"` in `extension/package.json` (for example `0.2.0`), merge that to `main`, then tag it:
 
 ```bash
-npx @vscode/vsce package --allow-missing-repository --skip-license
+git tag v0.2.0
+```
+
+```bash
+git push origin v0.2.0
+```
+
+The **Release** workflow (`.github/workflows/release.yml`) then runs the tests, packages the extension and attaches `12dpl-debugger-v0.2.0.vsix` to a new release. It fails if the tag doesn't match the version in `package.json`.
+
+To build a `.vsix` yourself instead, run this in `extension/`:
+
+```bash
+npx @vscode/vsce package --skip-license
 ```
 
 Then in VS Code: Extensions view → **⋯** → **Install from VSIX…**. The extension runs the adapter on VS Code's built-in Node, so the target machine doesn't need Node.
