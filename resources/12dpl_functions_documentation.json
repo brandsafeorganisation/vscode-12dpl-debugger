@@ -4351,6 +4351,26 @@
     "description": "Read length bytes from the binary file file and return it as Text in value. Note - this works for UNICODE files. For more information on ANSI, ASCII, Unicode, UTF’s and BOM’s, please see Set Ups.hwhich is a copy of the information from the 12d Model Reference manual. A function return value of zero indicates the Text was successfully returned."
   },
   {
+    "name": "File_write_unicode",
+    "id": 2677,
+    "returnType": "Integer",
+    "parameters": [
+      {
+        "name": "file",
+        "type": "File"
+      },
+      {
+        "name": "length",
+        "type": "Integer"
+      },
+      {
+        "name": "value",
+        "type": "Text"
+      }
+    ],
+    "description": "Write out value as length lots of two byte Unicode characters to the binary file file. If there is less than length characters in Text then the number of characters is brought up to length by writing out null padding. For more information on ANSI, ASCII, Unicode, UTF’s and BOM’s, please see Set Ups.h which is a copy of the information from the 12d Model Reference manual. A function return value of zero indicates the Text was successfully written."
+  },
+  {
     "name": "File_read",
     "id": 1712,
     "returnType": "Integer",
@@ -4389,6 +4409,26 @@
       }
     ],
     "description": "Write out value as length lots of one byte ANSI characters to the binary file file. If any of the characters of Text is not ANSI, then no data is written out and a non-zero function return value is returned. If there is less than length characters in Text then the number of characters is brought up to length by writing out null padding. WARNING: This function is not to be used for Unicode files. For Unicode files, use File_write_unicode(File file,Integer length,Text value) instead. For more information on ANSI, ASCII, Unicode, UTF’s and BOM’s, please see Set Ups.hwhich is a copy of the information from the 12d Model Reference manual. A function return value of zero indicates the Text was successfully written."
+  },
+  {
+    "name": "File_read",
+    "id": 1716,
+    "returnType": "Integer",
+    "parameters": [
+      {
+        "name": "file",
+        "type": "File"
+      },
+      {
+        "name": "length",
+        "type": "Integer"
+      },
+      {
+        "name": "array[]",
+        "type": "Integer"
+      }
+    ],
+    "description": "Read the next length lots of four bytes from the binary file file and return them as an Integer array in array[]. A function return value of zero indicates the Integer array was successfully returned."
   },
   {
     "name": "File_write",
@@ -4525,6 +4565,18 @@
       }
     ],
     "description": "Close the File file. A function return value of zero indicates file was closed successfully."
+  },
+  {
+    "name": "File_delete",
+    "id": 213,
+    "returnType": "Integer",
+    "parameters": [
+      {
+        "name": "file_name",
+        "type": "Text"
+      }
+    ],
+    "description": "Delete a file from the disk. A function return value of zero indicates the file was deleted."
   },
   {
     "name": "File_copy",
