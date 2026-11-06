@@ -80,6 +80,14 @@ launch if `outDir` contains the program.
 If the instrumented macro is run without the debugger listening, it gives up
 after 5 seconds, prints a note and runs normally.
 
+To build an installable `.vsix` (for example, to install on a machine where npm can't run), run this in `extension/`:
+
+```bash
+npx @vscode/vsce package --allow-missing-repository --skip-license
+```
+
+Then in VS Code: Extensions view → **⋯** → **Install from VSIX…**. The extension runs the adapter on VS Code's built-in Node, so the target machine doesn't need Node.
+
 To look at the instrumented output without VS Code:
 
 ```bash
@@ -111,6 +119,7 @@ npm run instrument -- path/to/macro.4dm path/to/outDir
 | `extension/src/extension.ts` | VS Code extension: registers the `12dpl` debugger and starts the adapter |
 | `extension/src/adapter/` | Debug adapter (DAP session plus the file channel) |
 | `extension/src/instrumenter/` | Tokenizer, `.4dm` rewriter, generator for the 12dPL runtime |
+| `extension/.vscodeignore` | Files left out of the packaged `.vsix` |
 | `extension/src/test/` | Instrumenter tests, and an end-to-end adapter test that uses a fake macro in place of 12d |
 | `resources/` | 12dPL reference docs and sample macros |
 
