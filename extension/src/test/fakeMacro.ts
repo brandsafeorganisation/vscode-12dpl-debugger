@@ -26,7 +26,8 @@ export class FakeMacro {
   private write(lines: string[]) {
     this.outSeq++;
     const base = path.join(this.dir, `m2a_${this.outSeq}`);
-    fs.writeFileSync(base + '.txt', lines.join('\r\n') + '\r\n');
+    // UTF-8 with BOM, as File_open(..., "ccs=UTF-8", ...) writes it.
+    fs.writeFileSync(base + '.txt', '\uFEFF' + lines.join('\r\n') + '\r\n', 'utf8');
     fs.writeFileSync(base + '.ready', 'ok\r\n');
   }
 
@@ -36,7 +37,7 @@ export class FakeMacro {
     this.inSeq++;
     let resumed = false;
     const text = fs.readFileSync(base + '.txt', 'latin1');
-    for (const ext of ['.txt', '.ready']) fs.rmSync(base + ext); // like Delete_files in the runtime
+    for (const ext of ['.txt', '.ready']) fs.rmSync(base + ext); // like File_delete in the runtime
     for (const raw of text.split(/\r?\n/)) {
       const [cmd, a, b] = raw.trim().split(/\s+/);
       switch (cmd) {

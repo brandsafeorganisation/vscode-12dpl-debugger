@@ -33,7 +33,7 @@ step over / in / out, pause, call stack, and variable values.
 3. **The channel is plain files** in `outDir/session/`:
    - The macro writes `m2a_<n>.txt`, then `m2a_<n>.ready`.
    - The adapter writes `a2m_<n>.txt`, then `a2m_<n>.ready`.
-   - Each side deletes the messages it has read (the macro uses `Delete_files`).
+   - Each side deletes the messages it has read (the macro uses `File_delete`).
 
    When the macro hits a stop, it writes the call stack and variable values,
    then polls (`Sleep` + `File_exists`) until the adapter sends `continue`,
