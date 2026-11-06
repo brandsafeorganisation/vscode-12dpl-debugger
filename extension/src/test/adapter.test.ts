@@ -71,7 +71,7 @@ const MACRO = [
   'void main()',                        // 12
   '{',                                  // 13
   '  Integer l_a = 1;',                 // 14
-  '  Panel   l_panel;',                 // 15
+  '  Panel   l_panel; Element l_elt;',  // 15
   '  l_a = helper(l_a);',               // 16
   '  Print(l_a);',                      // 17
   '}',                                  // 18
@@ -103,7 +103,8 @@ test('launch, breakpoints, stepping, variables, exit', async () => {
     // The adapter wrote the instrumented program and runtime; read the session dir from it.
     const runtime = fs.readFileSync(path.join(outDir, 'dbg12d_runtime.4dm'), 'utf8');
     const sessionDir = /#define DBG12D_DIR\s+"([^"]+)"/.exec(runtime)![1];
-    assert.match(fs.readFileSync(path.join(outDir, 'main.4dm'), 'utf8'), /^#include "dbg12d_runtime.4dm"\n/);
+    assert.match(fs.readFileSync(path.join(outDir, 'main.4dm'), 'utf8'), /^#include "[^"]*\/dbg12d_runtime.4dm"\n/);
+    assert.match(fs.readFileSync(path.join(outDir, 'dbg12d_inspectors.4dm'), 'utf8'), /Get_name\(p_value, /);
 
     const macro = new FakeMacro(sessionDir);
     const g = (v: string) => ['G', 'Integer', 'g_count', v] as ['G', string, string, string];
@@ -117,7 +118,15 @@ test('launch, breakpoints, stepping, variables, exit', async () => {
       { hit: 8, file: 1, vars: [['L', 'Integer', 'p_x', '1'], ['L', 'Integer', 'l_y', '2'], g('0')] },
       { hit: 9, file: 1, vars: [['L', 'Integer', 'p_x', '1'], ['L', 'Integer', 'l_y', '2'], g('1')] },
       { leave: true },
-      { hit: 17, file: 1, vars: [['L', 'Integer', 'l_a', '2'], g('1')] },
+      { hit: 17, file: 1, vars: [
+        ['L', 'Integer', 'l_a', '2'],
+        ['L', 'Element', 'l_elt', ''],
+        ['L', 'Text', 'l_elt.name', 'kerb'],
+        ['L', '!', 'l_elt.points', 'Get_points returned 3'],
+        ['L', 'Model', 'l_elt.model', ''],
+        ['L', 'Text', 'l_elt.model.name', 'design'],
+        g('1'),
+      ] },
       { leave: true },
     ]);
 
@@ -140,7 +149,7 @@ test('launch, breakpoints, stepping, variables, exit', async () => {
     await dap.request('next', { threadId: 1 });
     await dap.event('stopped');
     locals = await dap.request('variables', { variablesReference: 1 });
-    assert.deepEqual(locals.variables.map((v: any) => [v.name, v.value]), [['l_a', '1'], ['l_panel', '<Panel>']]);
+    assert.deepEqual(locals.variables.map((v: any) => [v.name, v.value]), [['l_a', '1'], ['l_panel', '<Panel>'], ['l_elt', '<Element>']]);
     const globals = await dap.request('variables', { variablesReference: 2 });
     assert.deepEqual(globals.variables.map((v: any) => [v.name, v.value]), [['g_count', '0']]);
     const hover = await dap.request('evaluate', { expression: 'l_a', frameId: 0, context: 'hover' });
@@ -160,7 +169,21 @@ test('launch, breakpoints, stepping, variables, exit', async () => {
     st = await dap.request('stackTrace', { threadId: 1 });
     assert.deepEqual(st.stackFrames.map((f: any) => [f.name, f.line]), [['main', 17]]);
     locals = await dap.request('variables', { variablesReference: 1 });
-    assert.deepEqual(locals.variables.map((v: any) => [v.name, v.value]), [['l_a', '2'], ['l_panel', '<Panel>']]);
+    assert.deepEqual(locals.variables.map((v: any) => [v.name, v.value]), [
+      ['l_a', '2'], ['l_panel', '<Panel>'],
+      ['l_elt', 'Element {name: "kerb", points: <Get_points returned 3>, model: Model {name: "design"}}'],
+    ]);
+    // Inspected values expand into their members, recursively.
+    const elt = locals.variables[2];
+    const members = await dap.request('variables', { variablesReference: elt.variablesReference });
+    assert.deepEqual(members.variables.map((v: any) => [v.name, v.value, v.evaluateName]), [
+      ['name', '"kerb"', 'l_elt.name'],
+      ['points', '<Get_points returned 3>', 'l_elt.points'],
+      ['model', 'Model {name: "design"}', 'l_elt.model'],
+    ]);
+    const model = await dap.request('variables', { variablesReference: members.variables[2].variablesReference });
+    assert.deepEqual(model.variables.map((v: any) => [v.name, v.value]), [['name', '"design"']]);
+    assert.equal((await dap.request('evaluate', { expression: 'l_elt.model.name', frameId: 0, context: 'hover' })).result, '"design"');
 
     // run to the end
     await dap.request('continue', { threadId: 1 });

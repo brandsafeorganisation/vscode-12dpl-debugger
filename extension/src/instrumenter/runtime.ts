@@ -15,11 +15,16 @@
 //   started
 //   stopped <reason>          then: frame <file> <line> <function>   (innermost first)
 //                                   var <L|G> <type> <name> <value...>
+//                                     (inspected values: a line with an empty value, then one
+//                                      line per member named <name>.<member>; type ! = failed)
 //                                   end
 //   exited
 //
 // adapter -> macro messages (one command per line, all applied in order):
 //   bpclear | bp <file> <line> | continue | next | stepIn | stepOut | pause | terminate
+
+import { INSPECTORS_FILE_NAME } from './instrument';
+import { InspectorTable, inspectorPrototypes, resolveInspectors } from './inspectors';
 
 export interface RuntimeOptions {
   /** Session directory, as 12d should see it. */
@@ -29,9 +34,14 @@ export interface RuntimeOptions {
   asyncCheckInterval?: number;
   /** Give up waiting for the debugger after this long at start-up and run normally. */
   attachTimeoutMs?: number;
+  /** Inspectors whose dump functions are declared here (defined in the inspectors file). */
+  inspectors?: InspectorTable;
+  /** How many levels of inspector members to expand. */
+  inspectDepth?: number;
 }
 
 export function generateRuntime(opts: RuntimeOptions): string {
+  const inspectors = opts.inspectors ?? resolveInspectors();
   let dir = opts.sessionDir.replace(/\\/g, '/');
   if (!dir.endsWith('/')) dir += '/';
   const esc = dir.replace(/"/g, '\\"');
@@ -46,6 +56,7 @@ export function generateRuntime(opts: RuntimeOptions): string {
 #define DBG12D_POLL_MS                ${opts.pollMs ?? 20}
 #define DBG12D_ASYNC_CHECK_INTERVAL   ${opts.asyncCheckInterval ?? 500}
 #define DBG12D_ATTACH_TIMEOUT_MS      ${opts.attachTimeoutMs ?? 5000}
+#define DBG12D_INSPECT_DEPTH          ${opts.inspectDepth ?? 3}
 
 #define DBG12D_MODE_RUN       0
 #define DBG12D_MODE_STEP_IN   1
@@ -320,18 +331,9 @@ void dbg12d_v_real(Text p_scope, Text p_name, Real p_value)       { dbg12d_v_lin
 void dbg12d_v_text(Text p_scope, Text p_name, Text p_value)       { dbg12d_v_line(p_scope, "Text", p_name, p_value); }
 void dbg12d_v_uid(Text p_scope, Text p_name, Uid p_value)         { dbg12d_v_line(p_scope, "Uid", p_name, To_text(p_value)); }
 void dbg12d_v_guid(Text p_scope, Text p_name, Guid p_value)       { dbg12d_v_line(p_scope, "Guid", p_name, To_text(p_value)); }
-void dbg12d_v_element(Text p_scope, Text p_name, Element p_value)
-{
-  Text l_name = "";
-  if (Get_name(p_value, l_name) != 0) l_name = "<null>";
-  dbg12d_v_line(p_scope, "Element", p_name, l_name);
-}
-void dbg12d_v_model(Text p_scope, Text p_name, Model p_value)
-{
-  Text l_name = "";
-  if (Get_name(p_value, l_name) != 0) l_name = "<null>";
-  dbg12d_v_line(p_scope, "Model", p_name, l_name);
-}
+
+// Inspector dumps for other types; defined in ${INSPECTORS_FILE_NAME}, included at the end of the program.
+${inspectorPrototypes(inspectors)}
 
 #endif
 `;

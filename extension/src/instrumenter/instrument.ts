@@ -10,19 +10,30 @@
 //   at function entry   dbg12d_enter(<file>, <line>, "<name>");
 //                       (main also gets dbg12d_init(); first)
 //   before a statement  if (dbg12d_hit(<file>, <line>)) { <variable dumps> dbg12d_wait(); }
-//   return ...;         { dbg12d_leave(); return ...; }
+//   return ...;         dbg12d_leave(); return ...;
+//                       ({ dbg12d_leave(); return ...; } as a brace-less if/else body)
 //   function's final }  dbg12d_leave(); }
+//                       (left out when the function ends with a return, which
+//                       12d requires to be the last statement)
 //
 // A statement is only instrumented where a new statement can legally start:
-// after ';', '{' or '}', or after a case label. Bodies of brace-less
-// if/else/for/while are left alone (no breakpoint on those lines).
+// after ';', '{' or '}'. Bodies of brace-less if/else/for/while are left alone
+// (no breakpoint on those lines), and so is the body of a switch itself, where
+// 12d only allows case/default labels with braced blocks (the code inside
+// those blocks is instrumented as usual).
+//
+// Quoted #includes are followed and rewritten to absolute paths of the
+// instrumented copies, so the program compiles the same from inside 12d (where
+// relative includes resolve against the project folder) and from outside.
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { Token, tokenize } from './tokenizer';
 import { TYPE_NAMES } from './types';
+import { InspectorTable, PRINTABLE, inspectFunction, resolveInspectors } from './inspectors';
 
 export const RUNTIME_FILE_NAME = 'dbg12d_runtime.4dm';
+export const INSPECTORS_FILE_NAME = 'dbg12d_inspectors.4dm';
 
 export interface VarInfo {
   name: string;
@@ -43,7 +54,7 @@ export interface InstrumentedFile {
   output: string;
   /** Lines (in the original file) that can hold a breakpoint. */
   breakpointLines: number[];
-  /** Number of extra lines added at the top of the output (1 for the entry file). */
+  /** Number of extra lines added at the top of the output (1 for the entry file; it also gets one at the end). */
   lineOffset: number;
   /**
    * Variables visible at each breakpoint line. Only some types have their
@@ -91,21 +102,13 @@ function lit(s: string): string {
 }
 
 /** How a variable of a given type is dumped, or undefined if it is shown without a value. */
-function dumpCall(v: VarInfo, scope: 'L' | 'G'): string | undefined {
+function dumpCall(v: VarInfo, scope: 'L' | 'G', inspected: ReadonlySet<string>): string | undefined {
   if (v.isArray) return undefined;
   const s = lit(scope);
   const nm = lit(v.name);
-  switch (v.type) {
-    case 'Integer': return `dbg12d_v_int(${s}, ${nm}, ${v.name});`;
-    case 'Integer64': return `dbg12d_v_int64(${s}, ${nm}, ${v.name});`;
-    case 'Real': return `dbg12d_v_real(${s}, ${nm}, ${v.name});`;
-    case 'Text': return `dbg12d_v_text(${s}, ${nm}, ${v.name});`;
-    case 'Uid': return `dbg12d_v_uid(${s}, ${nm}, ${v.name});`;
-    case 'Guid': return `dbg12d_v_guid(${s}, ${nm}, ${v.name});`;
-    case 'Element': return `dbg12d_v_element(${s}, ${nm}, ${v.name});`;
-    case 'Model': return `dbg12d_v_model(${s}, ${nm}, ${v.name});`;
-    default: return undefined;
-  }
+  if (PRINTABLE[v.type]) return `${PRINTABLE[v.type]}(${s}, ${nm}, ${v.name});`;
+  if (inspected.has(v.type)) return `${inspectFunction(v.type)}(${s}, ${nm}, ${v.name}, 1);`;
+  return undefined;
 }
 
 interface Insertion {
@@ -121,9 +124,11 @@ interface FileContext {
   globals: VarInfo[];
   warnings: string[];
   sourcePath: string;
+  /** Types that have inspectors (dumped through dbg12d_i_<Type>). */
+  inspected?: ReadonlySet<string>;
 }
 
-type BraceKind = 'function' | 'block' | 'init' | 'global' | 'do';
+type BraceKind = 'function' | 'block' | 'init' | 'global' | 'do' | 'switch';
 
 interface Brace {
   kind: BraceKind;
@@ -159,12 +164,11 @@ export function instrumentText(
   let functionParams: VarInfo[] = [];
   let functionName = '';
   let lastHitLine = -1;
-  // Pending 'return' wraps: paren depth at which the terminating ';' closes it.
-  const pendingReturns: number[] = [];
-  // Case label tracking: true between 'case'/'default' and its ':'.
-  let inCaseLabel = false;
-  let questionDepth = 0;
-  let prevWasCaseColon = false;
+  // The return statement being read, if any, and whether it was wrapped in braces.
+  let openReturn: { wrapped: boolean; functionLevel: boolean } | undefined;
+  // The ';' ending a return that is a direct statement of the function body.
+  let lastFunctionReturnEnd: Token | undefined;
+  const inspected = ctx.inspected ?? new Set<string>();
 
   const sig = toks.filter((t) => t.kind !== 'preproc');
   // Map from token to index in sig for prev/next lookups
@@ -203,7 +207,7 @@ export function instrumentText(
     ];
     const parts: string[] = [];
     for (const v of lineVars[line]) {
-      const call = dumpCall(v, v.scope);
+      const call = dumpCall(v, v.scope, inspected);
       if (call) parts.push(call);
     }
     parts.push('dbg12d_wait();');
@@ -283,12 +287,12 @@ export function instrumentText(
     const k = sigIndex.get(t)!;
     const prev = prevSig(t);
     const top = braces[braces.length - 1];
-    const inStatementContext = inFunction && top && top.kind !== 'init';
+    const inStatementContext = inFunction && top && top.kind !== 'init' && top.kind !== 'switch';
 
     // ---- statement start detection ----
-    if (inStatementContext && parenDepth === 0 && !inCaseLabel) {
+    if (inStatementContext && parenDepth === 0) {
       const p = prev?.text;
-      const afterBoundary = p === ';' || p === '{' || p === '}' || prevWasCaseColon;
+      const afterBoundary = p === ';' || p === '{' || p === '}';
       const excluded =
         t.text === '}' || t.text === 'else' || t.text === 'case' || t.text === 'default' || t.text === ';' ||
         (t.text === 'while' && p === '}' && lastClosedBraceKind === 'do');
@@ -305,7 +309,6 @@ export function instrumentText(
         }
       }
     }
-    prevWasCaseColon = false;
 
     // ---- token handling ----
     switch (t.text) {
@@ -348,6 +351,9 @@ export function instrumentText(
           kind = 'init';
         } else if (prev?.text === 'do') {
           kind = 'do';
+        } else if (prev?.text === ')') {
+          const open = matchOpenParen(sigIndex.get(prev)!);
+          if (open > 0 && sig[open - 1].text === 'switch') kind = 'switch';
         }
         braces.push({ kind, vars: [] });
         break;
@@ -356,35 +362,31 @@ export function instrumentText(
         const b = braces.pop();
         lastClosedBraceKind = b?.kind;
         if (b?.kind === 'function') {
-          ins.push({ at: t.start, text: 'dbg12d_leave(); ', order: 20 });
+          // 12d insists a function's last statement is its return; nothing may follow it.
+          if (!(lastFunctionReturnEnd && prev === lastFunctionReturnEnd)) {
+            ins.push({ at: t.start, text: 'dbg12d_leave(); ', order: 20 });
+          }
           inFunction = false;
           functionParams = [];
         }
         break;
       }
       case ';':
-        if (parenDepth === 0 && pendingReturns.length) {
-          pendingReturns.pop();
-          ins.push({ at: t.end, text: ' }', order: 0 });
+        if (parenDepth === 0 && openReturn) {
+          if (openReturn.wrapped) ins.push({ at: t.end, text: ' }', order: 0 });
+          else if (openReturn.functionLevel) lastFunctionReturnEnd = t;
+          openReturn = undefined;
         }
         break;
       case 'return':
-        if (inFunction) {
-          replacements.push({ start: t.start, end: t.end, text: '{ dbg12d_leave(); return' });
-          pendingReturns.push(parenDepth);
-        }
-        break;
-      case 'case':
-      case 'default':
-        if (inFunction && parenDepth === 0 && sig[k + 1]?.text !== '(') { inCaseLabel = true; questionDepth = 0; }
-        break;
-      case '?':
-        if (inCaseLabel) questionDepth++;
-        break;
-      case ':':
-        if (inCaseLabel && parenDepth === 0) {
-          if (questionDepth > 0) questionDepth--;
-          else { inCaseLabel = false; prevWasCaseColon = true; }
+        if (inFunction && parenDepth === 0) {
+          // A return that is a statement of its own stays bare (so a function
+          // still ends with 'return'); one that is the body of a brace-less
+          // if/else/loop needs braces to hold two statements.
+          const p = prev?.text;
+          const wrapped = !(p === ';' || p === '{' || p === '}');
+          replacements.push({ start: t.start, end: t.end, text: wrapped ? '{ dbg12d_leave(); return' : 'dbg12d_leave(); return' });
+          openReturn = { wrapped, functionLevel: !wrapped && top?.kind === 'function' };
         }
         break;
     }
@@ -418,12 +420,27 @@ export function instrumentText(
   return { text: out, breakpointLines: [...bpLines].sort((a, b) => a - b), variables: lineVars };
 }
 
+export interface ProgramOptions {
+  /** Inspectors for non-text types (defaults to DEFAULT_INSPECTORS). */
+  inspectors?: InspectorTable;
+  /**
+   * Extra folders to look for quoted #includes in, after the including file's
+   * folder and the entry file's folder (e.g. the 12d project folder).
+   */
+  includePaths?: string[];
+}
+
+/** Forward-slash absolute path, as written into #include lines. */
+export const includePath = (p: string) => path.resolve(p).split(path.sep).join('/');
+
 /**
  * Instrument a macro and every local file it #includes (with quotes), writing
- * the result to outDir. Paths of instrumented includes are rewritten so the
- * instrumented copies include each other.
+ * the result to outDir. Includes of instrumented files are rewritten to the
+ * absolute paths of the instrumented copies. The entry file gets the runtime
+ * included on a new first line and the inspectors on a new last line; the
+ * caller writes those two files (generateRuntime / generateInspectors).
  */
-export function instrumentProgram(entry: string, outDir: string): InstrumentResult {
+export function instrumentProgram(entry: string, outDir: string, opts: ProgramOptions = {}): InstrumentResult {
   entry = path.resolve(entry);
   outDir = path.resolve(outDir);
   const root = path.dirname(entry);
@@ -431,8 +448,11 @@ export function instrumentProgram(entry: string, outDir: string): InstrumentResu
   const byPath = new Map<string, InstrumentedFile>();
   const globals: VarInfo[] = [];
   const warnings: string[] = [];
+  const inspected = new Set((opts.inspectors ?? resolveInspectors()).keys());
+  const searchDirs = (opts.includePaths ?? []).map((d) => path.resolve(root, d));
 
   const key = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const isAbsolute = (p: string) => path.isAbsolute(p) || /^[A-Za-z]:[\\/]/.test(p);
 
   const outputFor = (src: string): string => {
     const rel = path.relative(root, src);
@@ -442,9 +462,9 @@ export function instrumentProgram(entry: string, outDir: string): InstrumentResu
   };
 
   const resolveInclude = (spec: string, fromFile: string): string | undefined => {
-    const candidates = path.isAbsolute(spec) || /^[A-Za-z]:[\\/]/.test(spec)
+    const candidates = isAbsolute(spec)
       ? [spec]
-      : [path.resolve(path.dirname(fromFile), spec), path.resolve(root, spec)];
+      : [path.dirname(fromFile), root, ...searchDirs].map((d) => path.resolve(d, spec));
     return candidates.find((c) => fs.existsSync(c) && fs.statSync(c).isFile());
   };
 
@@ -464,25 +484,29 @@ export function instrumentProgram(entry: string, outDir: string): InstrumentResu
     byPath.set(key(src), info);
 
     const { text, encoding } = readSource(src);
-    const ctx: FileContext = { id: info.id, globals, warnings, sourcePath: src };
+    const ctx: FileContext = { id: info.id, globals, warnings, sourcePath: src, inspected };
     const rewriteInclude = (directive: string): string => {
       const m = /^(#\s*include\s*)"([^"]+)"(.*)$/s.exec(directive);
       if (!m) return directive;
       const target = resolveInclude(m[2], src);
       if (!target) {
-        warnings.push(`${src}: could not resolve include "${m[2]}"; left unchanged.`);
+        warnings.push(`${src}: could not find include "${m[2]}" (fine if it is in a branch that isn't compiled); left unchanged.`);
         return directive;
       }
       const child = visit(target);
-      let rel = path.relative(path.dirname(info.output), child.output).split(path.sep).join('/');
-      if (path.isAbsolute(m[2]) || /^[A-Za-z]:[\\/]/.test(m[2])) rel = child.output.split(path.sep).join('/');
-      return `${m[1]}"${rel}"${m[3]}`;
+      return `${m[1]}"${includePath(child.output)}"${m[3]}`;
     };
     const result = instrumentText(text, ctx, rewriteInclude);
     info.breakpointLines = result.breakpointLines;
     info.variables = result.variables;
-    const header = isEntry ? `#include "${RUNTIME_FILE_NAME}"\n` : '';
-    writeSource(info.output, header + result.text, encoding);
+    let out = result.text;
+    if (isEntry) {
+      const nl = out.includes('\r\n') ? '\r\n' : '\n';
+      out = `#include "${includePath(path.join(outDir, RUNTIME_FILE_NAME))}"${nl}` + out;
+      if (!/\n$/.test(out)) out += nl;
+      out += `#include "${includePath(path.join(outDir, INSPECTORS_FILE_NAME))}"${nl}`;
+    }
+    writeSource(info.output, out, encoding);
     return info;
   };
 
