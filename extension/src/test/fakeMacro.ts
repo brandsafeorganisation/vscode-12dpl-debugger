@@ -35,7 +35,9 @@ export class FakeMacro {
     if (!fs.existsSync(base + '.ready')) return false;
     this.inSeq++;
     let resumed = false;
-    for (const raw of fs.readFileSync(base + '.txt', 'latin1').split(/\r?\n/)) {
+    const text = fs.readFileSync(base + '.txt', 'latin1');
+    for (const ext of ['.txt', '.ready']) fs.rmSync(base + ext); // like Delete_files in the runtime
+    for (const raw of text.split(/\r?\n/)) {
       const [cmd, a, b] = raw.trim().split(/\s+/);
       switch (cmd) {
         case 'bpclear': this.bps = []; break;

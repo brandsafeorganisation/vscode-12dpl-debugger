@@ -167,6 +167,8 @@ test('launch, breakpoints, stepping, variables, exit', async () => {
     await dap.event('terminated');
     await done;
     assert.equal(macro.terminated, false);
+    // Both sides cleaned up after themselves.
+    assert.deepEqual(fs.readdirSync(sessionDir), []);
   } finally {
     proc.kill();
   }
