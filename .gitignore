@@ -1,0 +1,4 @@
+node_modules/
+extension/out/
+.12dpl-debug/
+*.vsix
