@@ -169,6 +169,10 @@ The scaffold provides `extended_set_ups.h`, which holds many common magic number
 
 Most inbuilt 12d library calls return 0 for success, so I tend to define `#define SUCCESS 0`, and use that for my functions. For generic failures, I use `#define FAILURE -1`. However if different modes of failure are important to know, implement additional object-like pre-processor macros to suit. Failure `return` codes are negative.
 
+### Initialising
+
+Always initialise your variables where you can. Specifically, `Integer`/`Real`/`Integer64` do not have default values, so leaving them uninitialised risks undefined behaviour.
+
 ### Architecture
 
 Typical 12d panels are structured to  revolve around `Wait_on_events(Integer64 id, Text cmd, Text msg)`. The scaffold has an implemented custom event queue, so that the entire macro can be event-based, rather than just the GUI elements. Event based architecture is preferred for looser coupling.
