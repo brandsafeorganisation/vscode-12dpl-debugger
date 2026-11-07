@@ -235,3 +235,37 @@ test('refuses an outDir that contains the program', async () => {
     proc.kill();
   }
 });
+
+test('runs inline (in-process), as the extension uses it', async () => {
+  const { TwelveDDebugSession } = await import('../adapter/session');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dbg12d-inline-'));
+  const program = path.join(dir, 'main.4dm');
+  fs.writeFileSync(program, MACRO);
+  const session = new TwelveDDebugSession();
+  const got: any[] = [];
+  session.onDidSendMessage((m) => got.push(m));
+  const next = (match: (m: any) => boolean) => new Promise<any>((resolve, reject) => {
+    const t0 = Date.now();
+    const tick = () => {
+      const i = got.findIndex(match);
+      if (i >= 0) return resolve(got.splice(i, 1)[0]);
+      if (Date.now() - t0 > 5000) return reject(new Error('timed out: ' + JSON.stringify(got)));
+      setTimeout(tick, 5);
+    };
+    tick();
+  });
+  const send = (seq: number, command: string, args: unknown) =>
+    session.handleMessage({ seq, type: 'request', command, arguments: args } as any);
+  try {
+    send(1, 'initialize', { adapterID: '12dpl', pathFormat: 'path' });
+    assert.equal((await next((m) => m.type === 'response' && m.request_seq === 1)).success, true);
+    await next((m) => m.event === 'initialized');
+    send(2, 'launch', { program, outDir: path.join(dir, 'out'), pollIntervalMs: 10 });
+    send(3, 'configurationDone', {});
+    assert.equal((await next((m) => m.type === 'response' && m.request_seq === 2)).success, true);
+    send(4, 'disconnect', {});
+    await next((m) => m.type === 'response' && m.request_seq === 4);
+  } finally {
+    session.dispose();
+  }
+});

@@ -14,11 +14,11 @@ step over / in / out, pause, call stack, and variable values.
 12dPL has no debugger hooks, so the macro is rewritten to report on itself.
 
 ```
- VS Code ──DAP (stdin/stdout)──▶ debug adapter ──files──▶ instrumented macro in 12d
-   UI                             extension/out/adapter     (dbg12d_runtime.4dm)
+ VS Code ──DAP──▶ debug adapter ──files──▶ instrumented macro in 12d
+   UI               (in the extension)       (dbg12d_runtime.4dm)
 ```
 
-1. **Launch.** VS Code starts the debug adapter (a separate Node process). The
+1. **Launch.** The debug adapter runs inside the extension itself. The
    adapter copies the macro, plus every `#include "..."` it can resolve, into
    `outDir`, and adds code to each copy:
    - before each statement: `if (dbg12d_hit(file, line)) { <dump variables> dbg12d_wait(); }`
@@ -54,17 +54,49 @@ step over / in / out, pause, call stack, and variable values.
 
 The full protocol is documented at the top of `extension/src/instrumenter/runtime.ts`.
 
-## Using it
+## Locked-down (corporate) machines
+
+The installed extension needs nothing but VS Code:
+
+- No Node, npm or PowerShell. The debug adapter runs inside VS Code's
+  extension host, so it doesn't start a process at all.
+- `compileCommand`, if you set it, is started directly as an `.exe`, without
+  PowerShell or cmd.
+- The 12d side is plain 12dPL, which talks to VS Code through files in
+  `outDir/session/`.
+
+So on a work machine, install the `.vsix` from the
+[Releases page](https://github.com/georgegunterorg/vscode-12dpl-debugger/releases).
+VS Code's own policies still apply. If your organisation limits which
+extensions can be installed, the `.vsix` has to be allowed like any other.
+
+Only building the extension from source needs Node.
+
+## Building from source
+
+The repo's `.vscode/tasks.json` tasks are "process" tasks that start `node` or
+`npm.cmd` directly, so they work when PowerShell blocks `npm.ps1`
+("running scripts is disabled on this system"):
+
+1. **Terminal → Run Task… → install extension dependencies** (once).
+2. **Run 12dPL Debugger extension** (F5) builds the extension and opens a
+   second VS Code window with it loaded.
+
+From a terminal, use `npm.cmd`, not `npm`, in PowerShell, or use Command
+Prompt:
 
 ```bash
 cd extension
-npm install
-npm run build
+npm.cmd install
+npm.cmd run build
 ```
 
-1. Open this repo in VS Code and run **Run 12dPL Debugger extension** (F5).
+## Using it
+
+1. Install the `.vsix`, or run **Run 12dPL Debugger extension** (F5) from this
+   repo.
    This opens a second VS Code window with the extension loaded.
-2. In that window, open your macro folder and the `.4dm` file containing `main`.
+2. Open your macro folder and the `.4dm` file containing `main`.
 3. Set breakpoints and press F5. With no `launch.json`, it debugs the active file.
 4. The Debug Console prints the path of the instrumented entry file. Compile
    and run that file in 12d.
@@ -85,7 +117,7 @@ npm run build
 }
 ```
 
-The `compileCommand` path above is only an example; point it at the 12d macro compiler in your own install, or leave it out and compile in 12d.
+The `compileCommand` path above is only an example; point it at the 12d macro compiler in your own install, or leave it out and compile in 12d. It is run directly, with no shell, so it must be an `.exe`. Quote any part that contains spaces, or give a list: `["C:/.../cc4d.exe", "${file}"]`.
 
 Other launch options: `inspectors` and `inspectDepth` (see below), and
 `includePaths`, a list of extra folders to search for quoted includes (for
@@ -109,7 +141,7 @@ To build a `.vsix` yourself instead, run this in `extension/`:
 npx @vscode/vsce package --skip-license
 ```
 
-Then in VS Code: Extensions view → **⋯** → **Install from VSIX…**. The extension runs the adapter on VS Code's built-in Node, so the target machine doesn't need Node.
+Then in VS Code: Extensions view → **⋯** → **Install from VSIX…**. The target machine doesn't need Node.
 
 To look at the instrumented output without VS Code:
 
