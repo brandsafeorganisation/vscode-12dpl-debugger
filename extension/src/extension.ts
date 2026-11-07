@@ -16,7 +16,7 @@ function active12dSession(): vscode.DebugSession | undefined {
 }
 
 /**
- * vscode://12dpl-debugger.12dpl-debugger/debug?request=<file>
+ * vscode://georgegunter.12dpl-debugger/debug?request=<file>
  *
  * Sent by the companion macro (companions/compile_debug_macro_panel.4dm)
  * through Shell_execute. <file> holds the path of the macro to debug and
@@ -104,7 +104,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.debug.onDidStartDebugSession((s) => { if (s.type === '12dpl') sessions.add(s); }),
     vscode.debug.onDidTerminateDebugSession((s) => sessions.delete(s)),
     vscode.commands.registerCommand('12dpl.openSettings', () =>
-      vscode.commands.executeCommand('workbench.action.openSettings', '@ext:12dpl-debugger.12dpl-debugger')),
+      vscode.commands.executeCommand('workbench.action.openSettings', '@ext:georgegunter.12dpl-debugger')),
   );
 }
 

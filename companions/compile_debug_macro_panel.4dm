@@ -20,7 +20,7 @@
 //     (followed by 12d's include search: CPATH, SET_UPS_4D, USER_4D,
 //      LIB_4D and USER_LIB_4D, one NAME=value per line, so the extension
 //      finds includes the way the 12d compiler does)
-//   then opens                             vscode://12dpl-debugger.12dpl-debugger/debug?request=<that file>
+//   then opens                             vscode://georgegunter.12dpl-debugger/debug?request=<that file>
 //   the extension answers in               %TEMP%\12dpl_debug_request.txt.reply
 //     line 1: ok | error
 //     line 2: instrumented entry file      (or the error message)
@@ -33,7 +33,7 @@
 
 #include <set_ups.h>
 
-#define DEBUGGER_URI            "vscode://12dpl-debugger.12dpl-debugger/debug?request="
+#define DEBUGGER_URI            "vscode://georgegunter.12dpl-debugger/debug?request="
 #define REQUEST_FILE_NAME       "12dpl_debug_request.txt"
 #define REPLY_TIMEOUT_MS        60000
 #define REPLY_POLL_MS           200

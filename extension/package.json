@@ -2,8 +2,8 @@
   "name": "12dpl-debugger",
   "displayName": "12dPL Debugger",
   "description": "Step-through debugging for 12d Model macros (12dPL) via source instrumentation and the Debug Adapter Protocol.",
-  "version": "0.4.0",
-  "publisher": "12dpl-debugger",
+  "version": "0.5.0",
+  "publisher": "GeorgeGunter",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

@@ -107,7 +107,7 @@ during the run.
 2. The panel writes the source path to `%TEMP%\12dpl_debug_request.txt`. It
    It also writes 12d's include search (`CPATH`, `SET_UPS_4D`, `USER_4D`,
    `LIB_4D` and `USER_LIB_4D`, read with `Getenv`). It then opens
-   `vscode://12dpl-debugger.12dpl-debugger/debug?request=<that file>`
+   `vscode://georgegunter.12dpl-debugger/debug?request=<that file>`
    with `Shell_execute`, which starts VS Code if needed. No script or shell is
    involved.
 3. The extension opens the macro, starts a debug session, instruments it, and
