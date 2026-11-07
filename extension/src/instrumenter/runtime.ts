@@ -331,6 +331,28 @@ Integer dbg12d_hit(Integer p_file, Integer p_line)
   return 1;
 }
 
+// Stand-ins for the panel event calls. 12dPL can't interrupt them, so the
+// best the debugger can do is look for stop/pause as soon as one returns.
+Integer dbg12d_wait_on_events(Integer64 &p_id, Text &p_cmd, Text &p_msg)
+{
+  Integer l_ret = Wait_on_events(p_id, p_cmd, p_msg);
+  if (dbg12d_g_enabled != 0) {
+    dbg12d_g_hits = 0;
+    dbg12d_try_read_command();
+  }
+  return l_ret;
+}
+
+Integer dbg12d_wait_on_widgets(Integer &p_id, Text &p_cmd, Text &p_msg)
+{
+  Integer l_ret = Wait_on_widgets(p_id, p_cmd, p_msg);
+  if (dbg12d_g_enabled != 0) {
+    dbg12d_g_hits = 0;
+    dbg12d_try_read_command();
+  }
+  return l_ret;
+}
+
 void dbg12d_wait()
 {
   File_write_line(dbg12d_g_out, "end");

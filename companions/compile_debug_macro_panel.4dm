@@ -17,6 +17,9 @@
 //
 // Handshake with the extension (no scripts or shells involved):
 //   this macro writes the source path to   %TEMP%\12dpl_debug_request.txt
+//     (followed by 12d's include search: CPATH, SET_UPS_4D, USER_4D,
+//      LIB_4D and USER_LIB_4D, one NAME=value per line, so the extension
+//      finds includes the way the 12d compiler does)
 //   then opens                             vscode://12dpl-debugger.12dpl-debugger/debug?request=<that file>
 //   the extension answers in               %TEMP%\12dpl_debug_request.txt.reply
 //     line 1: ok | error
@@ -213,6 +216,11 @@ Integer request_debug_build(
     return FAILURE;
   }
   File_write_line(l_file, p_source_4dm);
+  File_write_line(l_file, "CPATH="       + Getenv("CPATH"));
+  File_write_line(l_file, "SET_UPS_4D="  + Getenv("SET_UPS_4D"));
+  File_write_line(l_file, "USER_4D="     + Getenv("USER_4D"));
+  File_write_line(l_file, "LIB_4D="      + Getenv("LIB_4D"));
+  File_write_line(l_file, "USER_LIB_4D=" + Getenv("USER_LIB_4D"));
   File_close(l_file);
 
   Set_data(p_message, "Starting the debugger in VS Code...");

@@ -13,6 +13,9 @@
 //   return ...;         dbg12d_leave(); return ...;
 //                       ({ dbg12d_leave(); return ...; } as a brace-less if/else body)
 //   function's final }  dbg12d_leave(); }
+//   Wait_on_events(...) dbg12d_wait_on_events(...)   (and Wait_on_widgets):
+//                       a panel macro spends most of its time in there, so
+//                       the wrapper checks for stop/pause after every event
 //                       (left out when the function ends with a return, which
 //                       12d requires to be the last statement)
 //
@@ -383,6 +386,12 @@ export function instrumentText(
           if (openReturn.wrapped) ins.push({ at: t.end, text: ' }', order: 0 });
           else if (openReturn.functionLevel) lastFunctionReturnEnd = t;
           openReturn = undefined;
+        }
+        break;
+      case 'Wait_on_events':
+      case 'Wait_on_widgets':
+        if (inFunction && sig[k + 1]?.text === '(') {
+          replacements.push({ start: t.start, end: t.end, text: t.text === 'Wait_on_events' ? 'dbg12d_wait_on_events' : 'dbg12d_wait_on_widgets' });
         }
         break;
       case 'return':

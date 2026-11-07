@@ -315,3 +315,28 @@ test('reports a failed launch to the companion macro', async () => {
     proc.kill();
   }
 });
+
+test('quoted includes are also looked for in 12d\'s CPATH folders', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dbg12d-e2e-'));
+  const userLib = path.join(dir, 'user_lib');
+  fs.mkdirSync(userLib);
+  fs.writeFileSync(path.join(userLib, 'shared.4dm'), 'void shared()\n{\n  Print(1);\n}\n');
+  const program = path.join(dir, 'macro', 'main.4dm');
+  fs.mkdirSync(path.dirname(program));
+  fs.writeFileSync(program, '#include "shared.4dm"\nvoid main()\n{\n  shared();\n}\n');
+  const outDir = path.join(dir, 'out');
+  const proc = cp.spawn(process.execPath, [path.join(__dirname, '..', 'adapter', 'main.js')]);
+  const dap = new DapClient(proc);
+  try {
+    await dap.request('initialize', { adapterID: '12dpl', pathFormat: 'path' });
+    const launched = dap.request('launch', { program, outDir, cpath: [path.join(dir, 'nowhere'), userLib] });
+    await dap.request('configurationDone');
+    await launched;
+    const main = fs.readFileSync(path.join(outDir, 'main.4dm'), 'utf8');
+    assert.match(main, /#include "[^"]*_external\/[^"]*shared\.4dm"/);
+    assert.ok(!dap.output.some((o) => /could not find include/.test(o)));
+    assert.ok(dap.output.some((o) => o.includes('12d include folders (CPATH)')));
+  } finally {
+    proc.kill();
+  }
+});
