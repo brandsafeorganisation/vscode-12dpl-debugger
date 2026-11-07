@@ -1,14 +1,15 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
+import * as path from 'path';
+import { TwelveDDebugSession } from './adapter/session';
 
 export function activate(context: vscode.ExtensionContext) {
-  // Run the adapter as a separate process using VS Code's own Node runtime.
+  // Run the debug adapter inside the extension host. No process is started and
+  // no shell is involved, so it works where PowerShell scripts, cmd or
+  // ELECTRON_RUN_AS_NODE are locked down. (out/adapter/main.js still runs the
+  // same adapter as a standalone process, for tests and debugging it.)
   const factory: vscode.DebugAdapterDescriptorFactory = {
     createDebugAdapterDescriptor(): vscode.DebugAdapterDescriptor {
-      const adapter = context.asAbsolutePath(path.join('out', 'adapter', 'main.js'));
-      return new vscode.DebugAdapterExecutable(process.execPath, [adapter], {
-        env: { ELECTRON_RUN_AS_NODE: '1' },
-      });
+      return new vscode.DebugAdapterInlineImplementation(new TwelveDDebugSession() as unknown as vscode.DebugAdapter);
     },
   };
 
