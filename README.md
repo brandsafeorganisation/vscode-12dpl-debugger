@@ -18,9 +18,9 @@ step over / in / out, pause, call stack, and variable values.
    UI               (in the extension)       (dbg12d_runtime.4dm)
 ```
 
-1. **Launch.** The debug adapter runs inside the extension itself. The
-   adapter copies the macro, plus every `#include "..."` it can resolve, into
-   `outDir`, and adds code to each copy:
+1. **Launch.** The companion macro asks VS Code to start a session (see
+   below). The debug adapter runs inside the extension itself. It copies the macro, plus every `#include "..."` it can resolve, into
+   `.12dpl-debug` (in the workspace folder, or next to the macro), and adds code to each copy:
    - before each statement: `if (dbg12d_hit(file, line)) { <dump variables> dbg12d_wait(); }`
    - at function entry and on `return`: call-stack tracking (`dbg12d_leave(); return x;`,
      so a function's last statement is still its `return`)
@@ -39,11 +39,13 @@ step over / in / out, pause, call stack, and variable values.
    `#ifdef __COMPILING_OUTSIDE_12D ... #else ... #endif` are rewritten, so
    whichever one is compiled includes the instrumented files. Includes are
    looked for next to the including file, then next to the entry file, then
-   in `includePaths`. One that is not found is left as it was, with a warning
+   in `12dpl.includePaths`, then in 12d's `CPATH` folders (user_lib, user,
+   library, set_ups). `#include <...>` lines are left for the 12d compiler
+   to find. One that is not found is left as it was, with a warning
    in the Debug Console.
-2. **You compile and run** `outDir/<entry>.4dm` in 12d Model. You can also set
-   `compileCommand` to have the adapter run the compiler for you.
-3. **The channel is plain files** in `outDir/session/`:
+2. **The companion macro compiles and runs** the instrumented entry file
+   with 12d's Compile/Run a Macro.
+3. **The channel is plain files** in `.12dpl-debug/session/`:
    - The macro writes `m2a_<n>.txt`, then `m2a_<n>.ready`.
    - The adapter writes `a2m_<n>.txt`, then `a2m_<n>.ready`.
    - Each side deletes the messages it has read (the macro uses `File_delete`).
@@ -63,7 +65,7 @@ The installed extension needs nothing but VS Code:
 - `compileCommand`, if you set it, is started directly as an `.exe`, without
   PowerShell or cmd.
 - The 12d side is plain 12dPL, which talks to VS Code through files in
-  `outDir/session/`.
+  `.12dpl-debug/session/`.
 
 So on a work machine, install the `.vsix` from the
 [Releases page](https://github.com/boytoucher123/12dpl-debugger/releases).
@@ -91,71 +93,21 @@ npm.cmd install
 npm.cmd run build
 ```
 
-## Using it
+## Using it: the companion macro
 
-1. Install the `.vsix`, or run **Run 12dPL Debugger extension** (F5) from this
-   repo.
-   This opens a second VS Code window with the extension loaded.
-2. Open your macro folder and the `.4dm` file containing `main`.
-3. Set breakpoints and press F5. With no `launch.json`, it debugs the active file.
-4. The Debug Console prints the path of the instrumented entry file. Compile
-   and run that file in 12d.
-5. 12d pauses on the first line of `main` (`stopOnEntry`). From there you can
-   step, continue, look at variables, or hover over a name to see its value.
+Debugging always starts from 12d. There is no F5 or `launch.json` in VS
+Code; the 12d macro starts the debugger, not the other way round.
 
-`launch.json` example:
-
-```json
-{
-  "type": "12dpl",
-  "request": "launch",
-  "name": "Debug macro",
-  "program": "${workspaceFolder}/my_macro.4dm",
-  "outDir": "${workspaceFolder}/.12dpl-debug",
-  "stopOnEntry": true,
-  "compileCommand": "\"C:/Program Files/12d/12dmodel/15.00/nt.x64/cc4d.exe\" \"${file}\""
-}
-```
-
-The `compileCommand` path above is only an example; point it at the 12d macro compiler in your own install, or leave it out and compile in 12d. It is run directly, with no shell, so it must be an `.exe`. Quote any part that contains spaces, or give a list: `["C:/.../cc4d.exe", "${file}"]`.
-
-Other launch options: `inspectors` and `inspectDepth` (see below),
-`includePaths`, a list of extra folders to search for quoted includes (for
-example your 12d project folder), and `trace`, which logs every message to
-and from the macro in the Debug Console.
-
-### Settings
-
-The same options can be set in the Settings editor: **File → Preferences →
-Settings**, search for `12dpl`. The **12dPL: Open Debugger Settings** command
-also opens it. A value in `launch.json` wins over the setting. Sessions
-started from the companion macro, which have no `launch.json`, use the
-settings only.
-
-`outDir` is deleted and recreated on every launch. The adapter refuses to
-launch if `outDir` contains the program.
-
-If the instrumented macro is run without the debugger listening, it gives up
-after 5 seconds, prints a note and runs normally.
-
-Only one copy of a debug build runs at a time. While one is running (it holds
-`outDir/session/macro.lock`), starting it again prints a message and exits. VS
-Code also refuses to start a second 12dPL debug session while one is active.
-
-Stopping debugging in VS Code stops the macro. A paused macro stops at once.
-A running one stops within 50 statements. One waiting in `Wait_on_events`
-stops as soon as the panel gets an event, such as the mouse moving over it. A
-debug build started after its session has ended also stops immediately.
-
-## Starting from inside 12d: the companion macro
-
-`companions/compile_debug_macro_panel.4dm` is a panel that drives everything
-from 12d:
+Install the `.vsix`, then compile `companions/compile_debug_macro_panel.4dm`
+in 12d once. Set your breakpoints in VS Code whenever you like, before or
+during the run.
 
 1. Pick the macro source and the usual Compile/Run settings, then press
    **Compile/Debug**.
 2. The panel writes the source path to `%TEMP%\12dpl_debug_request.txt`. It
-   then opens `vscode://12dpl-debugger.12dpl-debugger/debug?request=<that file>`
+   It also writes 12d's include search (`CPATH`, `SET_UPS_4D`, `USER_4D`,
+   `LIB_4D` and `USER_LIB_4D`, read with `Getenv`). It then opens
+   `vscode://12dpl-debugger.12dpl-debugger/debug?request=<that file>`
    with `Shell_execute`, which starts VS Code if needed. No script or shell is
    involved.
 3. The extension opens the macro, starts a debug session, instruments it, and
@@ -163,6 +115,9 @@ from 12d:
    `<request>.reply`.
 4. The panel runs 12d's **Compile/Run a Macro** on the instrumented file with
    the panel's settings.
+5. 12d pauses on the first line of `main` (the `12dpl.stopOnEntry` setting).
+   From there you can step, continue, look at variables, or hover over a name
+   to see its value.
 
 If a debug session is already running, the extension answers with an error,
 which the panel shows. The panel also refuses to start again while its last
@@ -188,15 +143,55 @@ To look at the instrumented output without VS Code:
 npm run instrument -- path/to/macro.4dm path/to/outDir
 ```
 
+### Settings
+
+Options live in the Settings editor: **File → Preferences → Settings**, search
+for `12dpl`. The **12dPL: Open Debugger Settings** command also opens it.
+
+| Setting | What it does |
+| --- | --- |
+| `12dpl.stopOnEntry` | Pause on the first line of `main`. |
+| `12dpl.inspectors`, `12dpl.inspectDepth` | See [Inspectors](#inspectors). |
+| `12dpl.includePaths` | Extra folders to search for quoted `#include`s. 12d's own `CPATH` folders are searched too, after these. |
+| `12dpl.compileCommand` | An `.exe` to run after instrumenting, started directly with no shell. `${file}` is the instrumented entry file and `${outDir}` its folder. Quote parts with spaces, or give a list. |
+| `12dpl.trace` | Log every message to and from the macro in the Debug Console. |
+
+The instrumented copy goes in `.12dpl-debug` in the workspace folder that
+holds the macro, or next to the macro if no folder is open. It is deleted
+and recreated on every launch.
+
+If the instrumented macro is run without the debugger listening, it gives up
+after 5 seconds, prints a note and runs normally.
+
+### One run at a time
+
+Only one copy of a debug build runs at a time. While one is running (it holds
+`.12dpl-debug/session/macro.lock`), starting it again prints a message and
+exits. VS Code refuses a second 12dPL debug session, and the companion panel
+won't start again while its last debug build is running.
+
+### Stopping
+
+The red Stop button in VS Code stops the macro:
+
+- Paused at a breakpoint or step: it quits at once.
+- Running: it quits within 50 statements.
+- Waiting in `Wait_on_events` (a panel waiting for input): 12dPL has no way to
+  interrupt that call or wake it from outside. The macro quits as soon as the
+  call returns, that is, at the next panel event (a click or keystroke on its
+  panel). The instrumented copy calls `Wait_on_events` / `Wait_on_widgets`
+  through a wrapper that checks for Stop straight after each event.
+- A debug build started after its session has ended quits immediately.
+
 ## Inspectors
 
 Most 12d types (`Element`, `Model`, `Attributes`, `Dynamic_Integer`, ...) have
 no text form, so the debugger can only show them through functions that read
 them. An inspector is one such function, given as its 12dPL signature in
-`launch.json`:
+the `12dpl.inspectors` setting (in `settings.json` form):
 
 ```json
-"inspectors": [
+"12dpl.inspectors": [
   "Integer Get_name(Element elt, Text &name)",
   "Integer Get_colour(Element elt, Integer &colour)",
   "Integer Get_model(Element elt, Model &model)",

@@ -2,7 +2,7 @@
   "name": "12dpl-debugger",
   "displayName": "12dPL Debugger",
   "description": "Step-through debugging for 12d Model macros (12dPL) via source instrumentation and the Debug Adapter Protocol.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "12dpl-debugger",
   "license": "UNLICENSED",
   "repository": {
@@ -17,9 +17,8 @@
   ],
   "main": "./out/extension.js",
   "activationEvents": [
-    "onDebugResolve:12dpl",
-    "onDebugDynamicConfigurations:12dpl",
-    "onUri"
+    "onUri",
+    "onDebugResolve:12dpl"
   ],
   "contributes": {
     "languages": [
@@ -112,28 +111,7 @@
             }
           }
         },
-        "initialConfigurations": [
-          {
-            "type": "12dpl",
-            "request": "launch",
-            "name": "Debug 12dPL macro",
-            "program": "${file}",
-            "stopOnEntry": true
-          }
-        ],
-        "configurationSnippets": [
-          {
-            "label": "12dPL: Launch",
-            "description": "Instrument a macro and wait for it to be run in 12d Model.",
-            "body": {
-              "type": "12dpl",
-              "request": "launch",
-              "name": "Debug 12dPL macro",
-              "program": "^\"\\${file}\"",
-              "stopOnEntry": true
-            }
-          }
-        ]
+        "hiddenWhen": "true"
       }
     ],
     "commands": [
@@ -149,7 +127,7 @@
         "12dpl.stopOnEntry": {
           "type": "boolean",
           "default": true,
-          "description": "Pause on the first line of main. A launch.json setting overrides this."
+          "description": "Pause on the first line of main."
         },
         "12dpl.inspectors": {
           "type": "array",
@@ -157,7 +135,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Functions that show what is inside values with no text form, as 12dPL signatures. The first parameter is the inspected value and each `&` parameter becomes a member, e.g. `Integer Get_name(Element elt, Text &name)`. Literals can fill other parameters: `Integer Get_attribute(Element elt, \"width\", Real &width)`. Inspectors for a type replace the built-in ones for that type. Used when launch.json has no `inspectors`."
+          "markdownDescription": "Functions that show what is inside values with no text form, as 12dPL signatures. The first parameter is the inspected value and each `&` parameter becomes a member, e.g. `Integer Get_name(Element elt, Text &name)`. Literals can fill other parameters: `Integer Get_attribute(Element elt, \"width\", Real &width)`. Inspectors for a type replace the built-in ones for that type."
         },
         "12dpl.inspectDepth": {
           "type": "number",
