@@ -67,6 +67,8 @@ export interface InstrumentResult {
   entryOutput: string;
   files: InstrumentedFile[];
   warnings: string[];
+  /** Inspected types the program dumps directly (generate inspectors for these). */
+  usedTypes: Set<string>;
 }
 
 interface SourceText {
@@ -102,12 +104,15 @@ function lit(s: string): string {
 }
 
 /** How a variable of a given type is dumped, or undefined if it is shown without a value. */
-function dumpCall(v: VarInfo, scope: 'L' | 'G', inspected: ReadonlySet<string>): string | undefined {
+function dumpCall(v: VarInfo, scope: 'L' | 'G', inspected: ReadonlySet<string>, used?: Set<string>): string | undefined {
   if (v.isArray) return undefined;
   const s = lit(scope);
   const nm = lit(v.name);
   if (PRINTABLE[v.type]) return `${PRINTABLE[v.type]}(${s}, ${nm}, ${v.name});`;
-  if (inspected.has(v.type)) return `${inspectFunction(v.type)}(${s}, ${nm}, ${v.name}, 1);`;
+  if (inspected.has(v.type)) {
+    used?.add(v.type);
+    return `${inspectFunction(v.type)}(${s}, ${nm}, ${v.name}, 1);`;
+  }
   return undefined;
 }
 
@@ -126,6 +131,8 @@ interface FileContext {
   sourcePath: string;
   /** Types that have inspectors (dumped through dbg12d_i_<Type>). */
   inspected?: ReadonlySet<string>;
+  /** Filled with the inspected types this file dumps. */
+  usedTypes?: Set<string>;
 }
 
 type BraceKind = 'function' | 'block' | 'init' | 'global' | 'do' | 'switch';
@@ -207,7 +214,7 @@ export function instrumentText(
     ];
     const parts: string[] = [];
     for (const v of lineVars[line]) {
-      const call = dumpCall(v, v.scope, inspected);
+      const call = dumpCall(v, v.scope, inspected, ctx.usedTypes);
       if (call) parts.push(call);
     }
     parts.push('dbg12d_wait();');
@@ -449,6 +456,7 @@ export function instrumentProgram(entry: string, outDir: string, opts: ProgramOp
   const globals: VarInfo[] = [];
   const warnings: string[] = [];
   const inspected = new Set((opts.inspectors ?? resolveInspectors()).keys());
+  const usedTypes = new Set<string>();
   const searchDirs = (opts.includePaths ?? []).map((d) => path.resolve(root, d));
 
   const key = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p);
@@ -484,7 +492,7 @@ export function instrumentProgram(entry: string, outDir: string, opts: ProgramOp
     byPath.set(key(src), info);
 
     const { text, encoding } = readSource(src);
-    const ctx: FileContext = { id: info.id, globals, warnings, sourcePath: src, inspected };
+    const ctx: FileContext = { id: info.id, globals, warnings, sourcePath: src, inspected, usedTypes };
     const rewriteInclude = (directive: string): string => {
       const m = /^(#\s*include\s*)"([^"]+)"(.*)$/s.exec(directive);
       if (!m) return directive;
@@ -511,5 +519,5 @@ export function instrumentProgram(entry: string, outDir: string, opts: ProgramOp
   };
 
   visit(entry);
-  return { entryOutput: files[0].output, files, warnings };
+  return { entryOutput: files[0].output, files, warnings, usedTypes };
 }

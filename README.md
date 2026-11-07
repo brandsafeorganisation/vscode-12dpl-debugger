@@ -119,15 +119,54 @@ npm.cmd run build
 
 The `compileCommand` path above is only an example; point it at the 12d macro compiler in your own install, or leave it out and compile in 12d. It is run directly, with no shell, so it must be an `.exe`. Quote any part that contains spaces, or give a list: `["C:/.../cc4d.exe", "${file}"]`.
 
-Other launch options: `inspectors` and `inspectDepth` (see below), and
+Other launch options: `inspectors` and `inspectDepth` (see below),
 `includePaths`, a list of extra folders to search for quoted includes (for
-example your 12d project folder).
+example your 12d project folder), and `trace`, which logs every message to
+and from the macro in the Debug Console.
+
+### Settings
+
+The same options can be set in the Settings editor: **File → Preferences →
+Settings**, search for `12dpl`. The **12dPL: Open Debugger Settings** command
+also opens it. A value in `launch.json` wins over the setting. Sessions
+started from the companion macro, which have no `launch.json`, use the
+settings only.
 
 `outDir` is deleted and recreated on every launch. The adapter refuses to
 launch if `outDir` contains the program.
 
 If the instrumented macro is run without the debugger listening, it gives up
 after 5 seconds, prints a note and runs normally.
+
+Only one copy of a debug build runs at a time. While one is running (it holds
+`outDir/session/macro.lock`), starting it again prints a message and exits. VS
+Code also refuses to start a second 12dPL debug session while one is active.
+
+Stopping debugging in VS Code stops the macro. A paused macro stops at once.
+A running one stops within 50 statements. One waiting in `Wait_on_events`
+stops as soon as the panel gets an event, such as the mouse moving over it. A
+debug build started after its session has ended also stops immediately.
+
+## Starting from inside 12d: the companion macro
+
+`companions/compile_debug_macro_panel.4dm` is a panel that drives everything
+from 12d:
+
+1. Pick the macro source and the usual Compile/Run settings, then press
+   **Compile/Debug**.
+2. The panel writes the source path to `%TEMP%\12dpl_debug_request.txt`. It
+   then opens `vscode://12dpl-debugger.12dpl-debugger/debug?request=<that file>`
+   with `Shell_execute`, which starts VS Code if needed. No script or shell is
+   involved.
+3. The extension opens the macro, starts a debug session, instruments it, and
+   writes `ok`, the instrumented file and the session folder to
+   `<request>.reply`.
+4. The panel runs 12d's **Compile/Run a Macro** on the instrumented file with
+   the panel's settings.
+
+If a debug session is already running, the extension answers with an error,
+which the panel shows. The panel also refuses to start again while its last
+debug build is still running.
 
 Ready-built `.vsix` files are attached to each [GitHub Release](https://github.com/georgegunterorg/vscode-12dpl-debugger/releases).
 
@@ -189,8 +228,16 @@ them. An inspector is one such function, given as its 12dPL signature in
   are: `Element`: `Get_name`, `Get_type`, `Get_points`, `Get_model`;
   `Model`: `Get_name`, `Get_number_of_items`.
 
+More built-ins show what is typed into a panel field, through
+`Get_data(<box>, Text &value)`. They cover `Input_Box`, `Real_Box`,
+`Integer_Box`, `Model_Box`, `File_Box`, `Tick_Box`, `Named_Tick_Box` and
+`Message_Box`.
+
 Inspectors only run while the macro is stopped, for variables in the
-innermost frame, so they cost nothing while the macro runs.
+innermost frame, so they cost nothing while the macro runs. List as many as
+you like. Code is only generated for the inspected types the macro actually
+uses (and their members' types), so an inspector that doesn't compile only
+affects macros that use its type.
 
 ## Limitations
 
@@ -218,7 +265,7 @@ innermost frame, so they cost nothing while the macro runs.
   `DVAR1(l_x);`, is fine. If you leave off the `;` (`DVAR1(l_x)`), the
   statement after it can't take a breakpoint.
 - Pause takes effect at the next instrumented statement, and the macro checks
-  for it every 500 statements. A macro blocked in `Wait_on_events` pauses once
+  for it every 50 statements. A macro blocked in `Wait_on_events` pauses once
   an event arrives.
 - Each statement now costs a function call, so instrumented macros run slower.
 
