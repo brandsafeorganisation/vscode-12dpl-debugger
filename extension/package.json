@@ -2,7 +2,7 @@
   "name": "12dpl-debugger",
   "displayName": "12dPL Debugger",
   "description": "Step-through debugging for 12d Model macros (12dPL) via source instrumentation and the Debug Adapter Protocol.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "12dpl-debugger",
   "license": "UNLICENSED",
   "repository": {
@@ -48,8 +48,9 @@
                 "default": true
               },
               "compileCommand": {
-                "type": "string",
-                "description": "Optional shell command run after instrumenting, e.g. a cc4d.exe invocation. ${file} is replaced with the instrumented entry file, ${outDir} with outDir."
+                "type": ["string", "array"],
+                "items": { "type": "string" },
+                "description": "Optional compiler to run after instrumenting, e.g. \"\\\"C:/Program Files/12d/.../cc4d.exe\\\" \\\"${file}\\\"\" or a list [program, arg, ...]. It is started directly, without PowerShell or cmd, so it must be an .exe. ${file} is replaced with the instrumented entry file, ${outDir} with outDir."
               },
               "pollIntervalMs": {
                 "type": "number",
