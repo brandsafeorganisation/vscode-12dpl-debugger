@@ -20,7 +20,8 @@ function strip(s: string) {
     .replace(/ dbg12d_init\(\); /g, '')
     .replace(/ dbg12d_enter\(\d+, \d+, "[^"]*"\); /g, '')
     .replace(/\{ dbg12d_leave\(\); return([^;]*;) \}/g, 'return$1')
-    .replace(/dbg12d_leave\(\); /g, '');
+    .replace(/dbg12d_leave\(\); /g, '')
+    .replace(/dbg12d_wait_on_(events|widgets)\(/g, 'Wait_on_$1(');
 }
 
 test('keeps line numbers and is reversible', () => {
@@ -287,4 +288,12 @@ test('runtime refuses a second running copy and unlocks on every way out', () =>
   assert.match(rt, /if \(File_exists\(DBG12D_DIR \+ "macro.lock"\) != 0\) \{[\s\S]*?Exit\(/);
   // exited, terminate, and attach timeout all remove the lock.
   assert.equal(rt.match(/dbg12d_unlock\(\);/g)!.length, 3);
+});
+
+test('panel event calls go through the runtime so stop works after each event', () => {
+  const src = 'void f()\n{\n  Integer64 id = 0LL;\n  Text cmd = "", msg = "";\n  Integer ret = Wait_on_events(id, cmd, msg);\n}\n';
+  const { text } = run(src);
+  assert.match(text.split('\n')[4], /Integer ret = dbg12d_wait_on_events\(id, cmd, msg\);$/);
+  assert.equal(strip(text), src);
+  assert.match(generateRuntime({ sessionDir: '/x' }), /Integer l_ret = Wait_on_events\(p_id, p_cmd, p_msg\);/);
 });

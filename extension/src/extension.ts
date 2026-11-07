@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { TwelveDDebugSession, writeReply } from './adapter/session';
 import { decode } from './adapter/channel';
+import { parseRequest } from './adapter/request';
 
 /** Launch settings that can also come from the Settings editor (12dpl.*). */
 const SETTINGS = ['stopOnEntry', 'inspectors', 'inspectDepth', 'includePaths', 'compileCommand', 'trace'] as const;
@@ -18,8 +19,12 @@ function active12dSession(): vscode.DebugSession | undefined {
  * vscode://12dpl-debugger.12dpl-debugger/debug?request=<file>
  *
  * Sent by the companion macro (companions/compile_debug_macro_panel.4dm)
- * through Shell_execute. <file> holds the path of the macro to debug; the
- * answer goes to <file>.reply (see writeReply in adapter/session.ts).
+ * through Shell_execute. <file> holds the path of the macro to debug and
+ * 12d's environment (see adapter/request.ts); the answer goes to
+ * <file>.reply (see writeReply in adapter/session.ts).
+ *
+ * This is the only way a 12dPL debug session starts: the macro starts the
+ * debugger, not the other way round.
  */
 async function handleUri(uri: vscode.Uri) {
   if (uri.path !== '/debug') return;
@@ -31,7 +36,7 @@ async function handleUri(uri: vscode.Uri) {
     vscode.window.showErrorMessage(`12dPL debugger: ${message}`);
   };
   try {
-    const program = decode(fs.readFileSync(request)).split(/\r?\n/)[0].trim();
+    const { program, cpath } = parseRequest(decode(fs.readFileSync(request)));
     if (!program || !fs.existsSync(program)) return fail(`Macro not found: ${program}`);
 
     // Only one session at a time: a second would wipe the first one's files.
@@ -49,6 +54,7 @@ async function handleUri(uri: vscode.Uri) {
       name: `Debug ${path.basename(program)} (from 12d)`,
       program,
       replyFile: reply,
+      cpath,
     });
     // On success the adapter writes the reply itself, once it is listening.
     if (!started && !fs.existsSync(reply)) fail('VS Code could not start the debug session; see the Debug Console.');
@@ -70,23 +76,17 @@ export function activate(context: vscode.ExtensionContext) {
 
   const provider: vscode.DebugConfigurationProvider = {
     resolveDebugConfiguration(folder, config) {
-      // F5 without a launch.json: debug the active .4dm file.
-      if (!config.type && !config.request && !config.name) {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document.languageId === '12dpl') {
-          config.type = '12dpl';
-          config.name = 'Debug 12dPL macro';
-          config.request = 'launch';
-          config.program = '${file}';
+      // Sessions start from 12d (the companion macro), never from F5 or launch.json.
+      if (!config.replyFile) {
+        if (config.type === '12dpl') {
+          vscode.window.showInformationMessage(
+            '12dPL debugging starts from 12d: run the Compile/Debug a Macro panel (companions/compile_debug_macro_panel.4dm).');
         }
-      }
-      if (!config.program) {
-        return vscode.window.showErrorMessage('Set "program" to the .4dm file containing main.').then(() => undefined);
+        return undefined;
       }
       if (active12dSession()) {
         return vscode.window.showErrorMessage('A 12dPL debug session is already running. Stop it first.').then(() => undefined);
       }
-      // Anything launch.json leaves out comes from the 12dPL settings.
       const settings = vscode.workspace.getConfiguration('12dpl', folder);
       for (const key of SETTINGS) {
         const value = settings.get(key);

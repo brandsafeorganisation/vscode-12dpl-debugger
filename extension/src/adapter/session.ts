@@ -25,6 +25,8 @@ export interface LaunchArgs extends DebugProtocol.LaunchRequestArguments {
   inspectDepth?: number;
   /** Extra folders to search for quoted #includes. */
   includePaths?: string[];
+  /** 12d's include search folders (its CPATH), sent by the companion macro; searched after includePaths. */
+  cpath?: string[];
   /** Log every message to and from the macro in the Debug Console. */
   trace?: boolean;
   /**
@@ -163,7 +165,9 @@ export class TwelveDDebugSession extends DebugSession {
       }
       const allInspectors = resolveInspectors(args.inspectors ?? []);
       fs.rmSync(outDir, { recursive: true, force: true });
-      const result = instrumentProgram(program, outDir, { inspectors: allInspectors, includePaths: args.includePaths });
+      if (args.cpath?.length) this.log(`12d include folders (CPATH):\n  ${args.cpath.join('\n  ')}`);
+      const includePaths = [...(args.includePaths ?? []), ...(args.cpath ?? [])];
+      const result = instrumentProgram(program, outDir, { inspectors: allInspectors, includePaths });
       const inspectors = restrictInspectors(allInspectors, result.usedTypes);
       this.files = result.files;
       fs.writeFileSync(path.join(outDir, RUNTIME_FILE_NAME), generateRuntime({ sessionDir, inspectors, inspectDepth: args.inspectDepth }));
