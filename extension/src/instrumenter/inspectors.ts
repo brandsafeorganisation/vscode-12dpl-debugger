@@ -45,6 +45,15 @@ export const DEFAULT_INSPECTORS = [
   'Integer Get_model(Element elt, Model &model)',
   'Integer Get_name(Model model, Text &name)',
   'Integer Get_number_of_items(Model model, Integer &items)',
+  // What is typed in panel fields.
+  'Integer Get_data(Input_Box box, Text &value)',
+  'Integer Get_data(Real_Box box, Text &value)',
+  'Integer Get_data(Integer_Box box, Text &value)',
+  'Integer Get_data(Model_Box box, Text &value)',
+  'Integer Get_data(File_Box box, Text &value)',
+  'Integer Get_data(Tick_Box box, Text &value)',
+  'Integer Get_data(Named_Tick_Box box, Text &value)',
+  'Integer Get_data(Message_Box box, Text &value)',
 ];
 
 export type InspectorArg =
@@ -119,6 +128,26 @@ export function resolveInspectors(user: string[] = []): InspectorTable {
   for (const d of DEFAULT_INSPECTORS.map(parseInspector)) if (!userTypes.has(d.target)) add(d);
   mine.forEach(add);
   return table;
+}
+
+/**
+ * Keep only the inspectors a program needs: the types it dumps, plus the
+ * member types those expand into. Code for other types isn't generated, so
+ * an inspector that doesn't compile only matters to programs that use its type.
+ */
+export function restrictInspectors(table: InspectorTable, used: Iterable<string>): InspectorTable {
+  const keep: InspectorTable = new Map();
+  const visit = (type: string) => {
+    const list = table.get(type);
+    if (!list || keep.has(type)) return;
+    keep.set(type, list);
+    for (const ins of list) {
+      for (const a of ins.args) if (a.kind === 'member') visit(a.type);
+      if (!ins.args.some((a) => a.kind === 'member')) visit(ins.returnType);
+    }
+  };
+  for (const t of used) visit(t);
+  return keep;
 }
 
 /** Name of the generated dump function for an inspected type. */

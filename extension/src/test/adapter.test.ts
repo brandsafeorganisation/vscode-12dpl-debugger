@@ -269,3 +269,49 @@ test('runs inline (in-process), as the extension uses it', async () => {
     session.dispose();
   }
 });
+
+test('answers the companion macro, logs with trace, and stops a macro that starts late', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dbg12d-e2e-'));
+  const program = path.join(dir, 'main.4dm');
+  fs.writeFileSync(program, MACRO);
+  const outDir = path.join(dir, 'out');
+  const replyFile = path.join(dir, 'request.txt.reply');
+  const proc = cp.spawn(process.execPath, [path.join(__dirname, '..', 'adapter', 'main.js')]);
+  const dap = new DapClient(proc);
+  try {
+    await dap.request('initialize', { adapterID: '12dpl', pathFormat: 'path' });
+    const launched = dap.request('launch', { program, outDir, pollIntervalMs: 10, replyFile, trace: true });
+    await dap.request('configurationDone');
+    await launched;
+    const reply = fs.readFileSync(replyFile, 'utf8').replace(/^﻿/, '').split('\r\n');
+    assert.deepEqual(reply, ['ok', path.join(outDir, 'main.4dm'), path.join(outDir, 'session'), '']);
+    assert.ok(!fs.existsSync(replyFile + '.tmp'));
+
+    // Stop debugging before the macro has started: it is told to terminate
+    // as soon as it does, and a left-over lock is removed.
+    const sessionDir = path.join(outDir, 'session');
+    fs.writeFileSync(path.join(sessionDir, 'macro.lock'), 'running');
+    await dap.request('disconnect', {});
+    assert.equal(fs.readFileSync(path.join(sessionDir, 'a2m_1.txt'), 'latin1').trim(), 'terminate');
+    assert.ok(!fs.existsSync(path.join(sessionDir, 'macro.lock')));
+    assert.ok(dap.output.some((o) => o.startsWith('to macro: terminate')));
+  } finally {
+    proc.kill();
+  }
+});
+
+test('reports a failed launch to the companion macro', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dbg12d-e2e-'));
+  const replyFile = path.join(dir, 'request.txt.reply');
+  const proc = cp.spawn(process.execPath, [path.join(__dirname, '..', 'adapter', 'main.js')]);
+  const dap = new DapClient(proc);
+  try {
+    await dap.request('initialize', { adapterID: '12dpl', pathFormat: 'path' });
+    await assert.rejects(dap.request('launch', { program: path.join(dir, 'missing.4dm'), replyFile }));
+    const reply = fs.readFileSync(replyFile, 'utf8').replace(/^﻿/, '').split('\r\n');
+    assert.equal(reply[0], 'error');
+    assert.match(reply[1], /Could not start/);
+  } finally {
+    proc.kill();
+  }
+});

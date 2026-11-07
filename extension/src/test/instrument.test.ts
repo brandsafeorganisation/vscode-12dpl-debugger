@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { instrumentProgram, instrumentText, VarInfo } from '../instrumenter/instrument';
 import { generateRuntime } from '../instrumenter/runtime';
-import { generateInspectors, parseInspector, resolveInspectors } from '../instrumenter/inspectors';
+import { generateInspectors, parseInspector, resolveInspectors, restrictInspectors } from '../instrumenter/inspectors';
 
 function run(src: string, globals: VarInfo[] = [], inspected: string[] = []) {
   const warnings: string[] = [];
@@ -270,4 +270,21 @@ test('every non-void runtime function ends with return', () => {
     if (ret !== 'void') assert.match(body, /\n?  return [^;]*;$/, name);
   }
   assert.ok(n > 10);
+});
+
+test('only the inspected types a program uses get inspector code', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dbg12d-'));
+  fs.writeFileSync(path.join(dir, 'main.4dm'), 'void main()\n{\n  Element l_elt;\n  Real_Box l_box;\n  Print(1);\n}\n');
+  const all = resolveInspectors();
+  const r = instrumentProgram(path.join(dir, 'main.4dm'), path.join(dir, 'out'), { inspectors: all });
+  assert.deepEqual([...r.usedTypes].sort(), ['Element', 'Real_Box']);
+  // Element's model member pulls in Model.
+  assert.deepEqual([...restrictInspectors(all, r.usedTypes).keys()].sort(), ['Element', 'Model', 'Real_Box']);
+});
+
+test('runtime refuses a second running copy and unlocks on every way out', () => {
+  const rt = generateRuntime({ sessionDir: '/tmp/x' });
+  assert.match(rt, /if \(File_exists\(DBG12D_DIR \+ "macro.lock"\) != 0\) \{[\s\S]*?Exit\(/);
+  // exited, terminate, and attach timeout all remove the lock.
+  assert.equal(rt.match(/dbg12d_unlock\(\);/g)!.length, 3);
 });
