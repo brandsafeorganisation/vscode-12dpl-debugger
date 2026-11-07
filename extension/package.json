@@ -2,35 +2,56 @@
   "name": "12dpl-debugger",
   "displayName": "12dPL Debugger",
   "description": "Step-through debugging for 12d Model macros (12dPL) via source instrumentation and the Debug Adapter Protocol.",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "publisher": "12dpl-debugger",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "https://github.com/boytoucher123/12dpl-debugger"
   },
-  "engines": { "vscode": "^1.80.0" },
-  "categories": ["Debuggers"],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Debuggers"
+  ],
   "main": "./out/extension.js",
-  "activationEvents": ["onDebugResolve:12dpl", "onDebugDynamicConfigurations:12dpl"],
+  "activationEvents": [
+    "onDebugResolve:12dpl",
+    "onDebugDynamicConfigurations:12dpl",
+    "onUri"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "12dpl",
-        "aliases": ["12dPL", "12d Macro"],
-        "extensions": [".4dm"],
+        "aliases": [
+          "12dPL",
+          "12d Macro"
+        ],
+        "extensions": [
+          ".4dm"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
-    "breakpoints": [{ "language": "12dpl" }],
+    "breakpoints": [
+      {
+        "language": "12dpl"
+      }
+    ],
     "debuggers": [
       {
         "type": "12dpl",
         "label": "12dPL Macro",
-        "languages": ["12dpl"],
+        "languages": [
+          "12dpl"
+        ],
         "configurationAttributes": {
           "launch": {
-            "required": ["program"],
+            "required": [
+              "program"
+            ],
             "properties": {
               "program": {
                 "type": "string",
@@ -48,8 +69,13 @@
                 "default": true
               },
               "compileCommand": {
-                "type": ["string", "array"],
-                "items": { "type": "string" },
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
                 "description": "Optional compiler to run after instrumenting, e.g. \"\\\"C:/Program Files/12d/.../cc4d.exe\\\" \\\"${file}\\\"\" or a list [program, arg, ...]. It is started directly, without PowerShell or cmd, so it must be an .exe. ${file} is replaced with the instrumented entry file, ${outDir} with outDir."
               },
               "pollIntervalMs": {
@@ -59,7 +85,9 @@
               },
               "inspectors": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "Functions that show what is inside a value with no text form, written as 12dPL signatures. The first parameter is the inspected value and each & parameter becomes a member, e.g. \"Integer Get_name(Element elt, Text &name)\". Other parameters can be literals: \"Integer Get_attribute(Element elt, \\\"width\\\", Real &width)\". Inspectors for a type replace the built-in ones for that type (Element: name, type, points, model; Model: name, items).",
                 "default": []
               },
@@ -70,9 +98,16 @@
               },
               "includePaths": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "Extra folders to look in for #include \"...\" files, after the including file's folder and the entry file's folder (e.g. the 12d project folder).",
                 "default": []
+              },
+              "trace": {
+                "type": "boolean",
+                "description": "Log every message to and from the macro in the Debug Console (for diagnosing stepping problems).",
+                "default": false
               }
             }
           }
@@ -100,7 +135,61 @@
           }
         ]
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "12dpl.openSettings",
+        "title": "Open Debugger Settings",
+        "category": "12dPL"
+      }
+    ],
+    "configuration": {
+      "title": "12dPL Debugger",
+      "properties": {
+        "12dpl.stopOnEntry": {
+          "type": "boolean",
+          "default": true,
+          "description": "Pause on the first line of main. A launch.json setting overrides this."
+        },
+        "12dpl.inspectors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Functions that show what is inside values with no text form, as 12dPL signatures. The first parameter is the inspected value and each `&` parameter becomes a member, e.g. `Integer Get_name(Element elt, Text &name)`. Literals can fill other parameters: `Integer Get_attribute(Element elt, \"width\", Real &width)`. Inspectors for a type replace the built-in ones for that type. Used when launch.json has no `inspectors`."
+        },
+        "12dpl.inspectDepth": {
+          "type": "number",
+          "default": 3,
+          "description": "How many levels of inspected members to expand."
+        },
+        "12dpl.includePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Extra folders to look in for #include \"...\" files, after the including file's folder and the entry file's folder (e.g. the 12d project folder).",
+          "default": []
+        },
+        "12dpl.compileCommand": {
+          "type": [
+            "string",
+            "array"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": "",
+          "markdownDescription": "Optional compiler (an `.exe`) run after instrumenting, started directly without a shell. `${file}` is the instrumented entry file, `${outDir}` the output folder."
+        },
+        "12dpl.trace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log every message to and from the macro in the Debug Console."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "tsc -p .",

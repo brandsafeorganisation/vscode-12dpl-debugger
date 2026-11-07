@@ -7,7 +7,7 @@ import {
 } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { INSPECTORS_FILE_NAME, instrumentProgram, InstrumentedFile, RUNTIME_FILE_NAME } from '../instrumenter/instrument';
-import { generateInspectors, resolveInspectors } from '../instrumenter/inspectors';
+import { generateInspectors, resolveInspectors, restrictInspectors } from '../instrumenter/inspectors';
 import { generateRuntime } from '../instrumenter/runtime';
 import { FileChannel, MacroMessage, Variable } from './channel';
 import { compileArgv } from './command';
@@ -25,6 +25,24 @@ export interface LaunchArgs extends DebugProtocol.LaunchRequestArguments {
   inspectDepth?: number;
   /** Extra folders to search for quoted #includes. */
   includePaths?: string[];
+  /** Log every message to and from the macro in the Debug Console. */
+  trace?: boolean;
+  /**
+   * Set when the companion macro started the session: once instrumented, the
+   * result is written here (see writeReply) for the macro to pick up.
+   */
+  replyFile?: string;
+}
+
+/**
+ * Answer the companion macro: "ok", the instrumented entry file and the
+ * session folder, or "error" and a message. Written to a temporary name and
+ * renamed, so the macro (which polls for the file) never reads half of it.
+ */
+export function writeReply(replyFile: string, lines: string[]) {
+  const tmp = replyFile + '.tmp';
+  fs.writeFileSync(tmp, '\uFEFF' + lines.join('\r\n') + '\r\n', 'utf8');
+  fs.renameSync(tmp, replyFile);
 }
 
 const THREAD_ID = 1;
@@ -103,7 +121,11 @@ export class TwelveDDebugSession extends DebugSession {
     return new Source(path.basename(file.source), file.source);
   }
 
+  private trace = false;
+  private sessionDir: string | undefined;
+
   private send(lines: string[]) {
+    if (this.trace) this.log('to macro: ' + lines.join(' | '));
     this.channel?.send(lines);
   }
 
@@ -130,16 +152,19 @@ export class TwelveDDebugSession extends DebugSession {
       const program = path.resolve(args.program);
       const outDir = path.resolve(args.outDir ?? path.join(path.dirname(program), '.12dpl-debug'));
       const sessionDir = path.join(outDir, 'session');
+      this.sessionDir = sessionDir;
       this.stopOnEntry = args.stopOnEntry ?? true;
+      this.trace = args.trace ?? false;
 
       // outDir is wiped on every launch, so it must never hold the real sources.
       const rel = path.relative(outDir, program);
       if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
         throw new Error(`outDir (${outDir}) must not contain the program; it is deleted on every launch.`);
       }
-      const inspectors = resolveInspectors(args.inspectors ?? []);
+      const allInspectors = resolveInspectors(args.inspectors ?? []);
       fs.rmSync(outDir, { recursive: true, force: true });
-      const result = instrumentProgram(program, outDir, { inspectors, includePaths: args.includePaths });
+      const result = instrumentProgram(program, outDir, { inspectors: allInspectors, includePaths: args.includePaths });
+      const inspectors = restrictInspectors(allInspectors, result.usedTypes);
       this.files = result.files;
       fs.writeFileSync(path.join(outDir, RUNTIME_FILE_NAME), generateRuntime({ sessionDir, inspectors, inspectDepth: args.inspectDepth }));
       fs.writeFileSync(path.join(outDir, INSPECTORS_FILE_NAME), generateInspectors(inspectors));
@@ -148,18 +173,26 @@ export class TwelveDDebugSession extends DebugSession {
       for (const [p, bps] of this.pendingBreakpoints) this.applyBreakpoints(p, bps);
       this.pendingBreakpoints.clear();
 
-      this.channel = new FileChannel(sessionDir, (m) => this.onMacroMessage(m), args.pollIntervalMs ?? 30);
+      this.channel = new FileChannel(sessionDir, (m) => {
+        if (this.trace) this.log('from macro: ' + JSON.stringify(m));
+        this.onMacroMessage(m);
+      }, args.pollIntervalMs ?? 30);
       this.channel.start();
       this.state = 'waitingForMacro';
 
       this.log(`Instrumented ${result.files.length} file(s) into ${outDir}`);
       if (args.compileCommand) await this.compile(args.compileCommand, result.entryOutput, outDir);
       this.log(`Now compile and run this file in 12d Model:\n  ${result.entryOutput}\nWaiting for the macro to start...`, 'important');
+      if (args.replyFile) writeReply(args.replyFile, ['ok', result.entryOutput, sessionDir]);
 
       await this.configurationDone;
       this.sendResponse(response);
     } catch (e) {
-      this.sendErrorResponse(response, 1, `Could not start: ${(e as Error).message}`);
+      const message = `Could not start: ${(e as Error).message}`;
+      if (args.replyFile) {
+        try { writeReply(args.replyFile, ['error', message]); } catch { /* the macro times out instead */ }
+      }
+      this.sendErrorResponse(response, 1, message);
     }
   }
 
@@ -336,8 +369,13 @@ export class TwelveDDebugSession extends DebugSession {
   }
 
   shutdown() {
-    if (this.state === 'running' || this.state === 'stopped') this.send(['terminate']);
+    // Also when the macro hasn't started yet: a debug build run after the
+    // session has ended then stops straight away rather than running blind.
+    if (this.state === 'running' || this.state === 'stopped' || this.state === 'waitingForMacro') this.send(['terminate']);
     this.state = 'exited';
+    // The macro removes its lock when it sees terminate; if it died instead
+    // (a 12d error), nothing else would.
+    if (this.sessionDir) fs.rmSync(path.join(this.sessionDir, 'macro.lock'), { force: true });
     // Give the macro a moment to see the terminate message before we stop listening.
     setTimeout(() => this.channel?.stop(), 200);
   }

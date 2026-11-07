@@ -4,6 +4,25 @@
 // Organization: Demo - Mark Man
 // Date: 09/07/2022
 // --------------------------------------------------------
+//
+// Compile/Debug a Macro
+//
+// 1. Pick the macro source (the .4dm with main) and the usual Compile/Run
+//    settings.
+// 2. Compile/Debug asks VS Code (through the 12dPL Debugger extension) to
+//    open the macro and start a debug session. The extension writes the
+//    instrumented copy and answers with its path.
+// 3. The 12d Compile/Run option is then run on the instrumented copy, with
+//    the settings from this panel.
+//
+// Handshake with the extension (no scripts or shells involved):
+//   this macro writes the source path to   %TEMP%\12dpl_debug_request.txt
+//   then opens                             vscode://12dpl-debugger.12dpl-debugger/debug?request=<that file>
+//   the extension answers in               %TEMP%\12dpl_debug_request.txt.reply
+//     line 1: ok | error
+//     line 2: instrumented entry file      (or the error message)
+//     line 3: session folder
+// --------------------------------------------------------
 
 {
   Integer Shutdown_code = 424242;
@@ -11,58 +30,219 @@
 
 #include <set_ups.h>
 
-Integer panel_prompt_compile_run_a_macro(Text filepath_debug_4dm)
+#define DEBUGGER_URI            "vscode://12dpl-debugger.12dpl-debugger/debug?request="
+#define REQUEST_FILE_NAME       "12dpl_debug_request.txt"
+#define REPLY_TIMEOUT_MS        60000
+#define REPLY_POLL_MS           200
+#define SW_SHOWNORMAL           1
+
+#define SUCCESS                 0
+#define FAILURE                 -1
+
+
+Text char_to_text(Integer p_char)
+// ----------------------------------------------------------------
+//  One character as a Text
+// ----------------------------------------------------------------
+{
+  Text l_text = " ";
+  Set_char(l_text, 1, p_char);
+  return l_text;
+}
+
+Text xml_escape(Text p_text)
+// ----------------------------------------------------------------
+//  Escape a value for the SLX data given to Panel_prompt
+// ----------------------------------------------------------------
+{
+  Text    l_out    = "";
+  Integer l_length = Text_length(p_text);
+  for (Integer i = 1; i <= l_length; i++) {
+    Integer l_char = 0;
+    Get_char(p_text, i, l_char);
+    switch (l_char) {
+      case '&' : {
+        l_out += "&amp;";
+      } break;
+      case '<' : {
+        l_out += "&lt;";
+      } break;
+      case '>' : {
+        l_out += "&gt;";
+      } break;
+      case '"' : {
+        l_out += "&quot;";
+      } break;
+      default : {
+        l_out += char_to_text(l_char);
+      }
+    }
+  }
+  return l_out;
+}
+
+Text url_encode(Text p_text)
+// ----------------------------------------------------------------
+//  Percent-encode the characters that would break the vscode:// link
+// ----------------------------------------------------------------
+{
+  Text    l_out    = "";
+  Integer l_length = Text_length(p_text);
+  for (Integer i = 1; i <= l_length; i++) {
+    Integer l_char = 0;
+    Get_char(p_text, i, l_char);
+    switch (l_char) {
+      case '%' : {
+        l_out += "%25";
+      } break;
+      case ' ' : {
+        l_out += "%20";
+      } break;
+      case '#' : {
+        l_out += "%23";
+      } break;
+      case '&' : {
+        l_out += "%26";
+      } break;
+      case '+' : {
+        l_out += "%2B";
+      } break;
+      case '?' : {
+        l_out += "%3F";
+      } break;
+      default : {
+        l_out += char_to_text(l_char);
+      }
+    }
+  }
+  return l_out;
+}
+
+Text slx_tick_box(Text p_name, Integer p_value)
+// ----------------------------------------------------------------
+{
+  Text l_value = "false";
+  if (p_value != 0) {
+    l_value = "true";
+  }
+  return "<tick_box><name>" + xml_escape(p_name) + "</name><value>" + l_value + "</value></tick_box>";
+}
+
+Integer panel_prompt_compile_run_a_macro(
+  Text    filepath_debug_4dm,
+  Integer allow_old_string_calls,
+  Integer allow_old_id_calls,
+  Integer keep_cpp_file,
+  Text    macro_arguments,
+  Integer show_buttons,
+  Integer show_console,
+  Integer retain_on_exit,
+  Integer allow_defaults,
+  Integer keep_panel_open
+)
+// ----------------------------------------------------------------
+//  Run 12d's Compile/Run a Macro option with the given settings
+// ----------------------------------------------------------------
 {
   Text    panel_name  = "Compile/Run a Macro";
   Integer interactive = 0xff00;
   Text    panel_data  = "";
 
-  // @TODO move out all settings to variables
   panel_data += "<file_box>";
   panel_data +=   "<name>Macro source</name>";
-  panel_data +=   "<value>" + filepath_debug_4dm + "</value>";
+  panel_data +=   "<value>" + xml_escape(filepath_debug_4dm) + "</value>";
   panel_data += "</file_box>";
-  panel_data += "<tick_box>";
-  panel_data +=   "<name>Allow old string calls</name>";
-  panel_data +=   "<value>false</value>";
-  panel_data += "</tick_box>";
-  panel_data += "<tick_box>";
-  panel_data +=   "<name>Allow old id calls</name>";
-  panel_data +=   "<value>false</value>";
-  panel_data += "</tick_box>";
-  panel_data += "<tick_box>";
-  panel_data +=   "<name>Keep cpp file</name>";
-  panel_data +=   "<value>false</value>";
-  panel_data += "</tick_box>";
+  panel_data += slx_tick_box("Allow old string calls", allow_old_string_calls);
+  panel_data += slx_tick_box("Allow old id calls"    , allow_old_id_calls);
+  panel_data += slx_tick_box("Keep cpp file"         , keep_cpp_file);
   panel_data += "<input_box>";
   panel_data +=   "<name>Macro Arguments</name>";
-  panel_data += "<value/>";
+  panel_data +=   "<value>" + xml_escape(macro_arguments) + "</value>";
   panel_data += "</input_box>";
-  panel_data += "<tick_box>";
-  panel_data +=   "<name>Show buttons</name>";
-  panel_data +=   "<value>false</value>";
-  panel_data += "</tick_box>";
-  panel_data += "<tick_box>";
-  panel_data +=   "<name>Show console</name>";
-  panel_data +=   "<value>false</value>";
-  panel_data += "</tick_box>";
-  panel_data += "<tick_box>";
-  panel_data +=   "<name>Retain on exit</name>";
-  panel_data +=   "<value>false</value>";
-  panel_data += "</tick_box>";
-  panel_data += "<tick_box>";
-  panel_data +=   "<name>Allow defaults</name>";
-  panel_data +=   "<value>false</value>";
-  panel_data += "</tick_box>";
-  panel_data += "<tick_box>";
-  panel_data +=   "<name>Keep panel open after run</name>";
-  panel_data +=   "<value>true</value>";
-  panel_data += "</tick_box>";
+  panel_data += slx_tick_box("Show buttons"             , show_buttons);
+  panel_data += slx_tick_box("Show console"             , show_console);
+  panel_data += slx_tick_box("Retain on exit"           , retain_on_exit);
+  panel_data += slx_tick_box("Allow defaults"           , allow_defaults);
+  panel_data += slx_tick_box("Keep panel open after run", keep_panel_open);
   panel_data += "<run_button>";
   panel_data +=   "<name>&amp;Compile/Run</name>";
   panel_data += "</run_button>";
 
   return Panel_prompt(panel_name, interactive, panel_data);
+}
+
+Integer read_reply(Text p_reply_file, Text &p_status, Text &p_line_2, Text &p_line_3)
+// ----------------------------------------------------------------
+{
+  File l_file;
+  if (File_open(p_reply_file, "r", "ccs=UTF-8", l_file) != 0) {
+    return FAILURE;
+  }
+  p_status = "";
+  p_line_2 = "";
+  p_line_3 = "";
+  File_read_line(l_file, p_status);
+  File_read_line(l_file, p_line_2);
+  File_read_line(l_file, p_line_3);
+  File_close(l_file);
+  return SUCCESS;
+}
+
+Integer request_debug_build(
+  Widget      p_widget,
+  Message_Box p_message,
+  Text        p_source_4dm,
+  Text        &p_debug_4dm,
+  Text        &p_session_dir
+)
+// ----------------------------------------------------------------
+//  Ask the VS Code extension to start debugging p_source_4dm.
+//  Returns SUCCESS with the instrumented file and its session folder,
+//  or FAILURE with the reason shown in p_message.
+// ----------------------------------------------------------------
+{
+  Text l_temp_dir = "";
+  Get_temporary_directory(l_temp_dir);
+  Text l_request = l_temp_dir + "\\" + REQUEST_FILE_NAME;
+  Text l_reply   = l_request + ".reply";
+  File_delete(l_reply);
+
+  File l_file;
+  if (File_open(l_request, "w", "ccs=UTF-8", l_file) != 0) {
+    Set_data(p_message, "Could not write " + l_request);
+    return FAILURE;
+  }
+  File_write_line(l_file, p_source_4dm);
+  File_close(l_file);
+
+  Set_data(p_message, "Starting the debugger in VS Code...");
+  Shell_execute(p_widget, "open", DEBUGGER_URI + url_encode(l_request), "", "", SW_SHOWNORMAL);
+
+  Integer l_waited = 0;
+  while (File_exists(l_reply) == 0) {
+    if (l_waited >= REPLY_TIMEOUT_MS) {
+      Set_data(p_message, "VS Code did not answer. Is the 12dPL Debugger extension installed?");
+      return FAILURE;
+    }
+    Sleep(REPLY_POLL_MS);
+    l_waited += REPLY_POLL_MS;
+  }
+
+  Text l_status = "", l_line_2 = "", l_line_3 = "";
+  if (read_reply(l_reply, l_status, l_line_2, l_line_3) != SUCCESS) {
+    Set_data(p_message, "Could not read " + l_reply);
+    return FAILURE;
+  }
+  File_delete(l_reply);
+  File_delete(l_request);
+
+  if (l_status != "ok") {
+    Set_data(p_message, l_line_2);
+    return FAILURE;
+  }
+  p_debug_4dm   = l_line_2;
+  p_session_dir = l_line_3;
+  return SUCCESS;
 }
 
 Integer show_panel()
@@ -75,10 +255,21 @@ Integer show_panel()
 
   Vertical_Group vg_compile_options = Create_vertical_group(-1);
   Vertical_Group vg_macro_arguments = Create_vertical_group(-1);
+  Vertical_Group vg_run_options     = Create_vertical_group(-1);
 
   // Inputs
   File_Box  fb_macro_source    = Create_file_box ("Macro source", message, CHECK_FILE_MUST_EXIST, "*.4dm");
   Input_Box ib_macro_arguments = Create_input_box(""            , message);
+
+  // Compile/Run settings (defaults as in 12d's Compile/Run a Macro)
+  Named_Tick_Box tb_allow_old_string_calls = Create_named_tick_box("Allow old string calls"   , 0, "AllowOldStringCalls");
+  Named_Tick_Box tb_allow_old_id_calls     = Create_named_tick_box("Allow old id calls"       , 0, "AllowOldIdCalls");
+  Named_Tick_Box tb_keep_cpp_file          = Create_named_tick_box("Keep cpp file"            , 0, "KeepCppFile");
+  Named_Tick_Box tb_show_buttons           = Create_named_tick_box("Show buttons"             , 0, "ShowButtons");
+  Named_Tick_Box tb_show_console           = Create_named_tick_box("Show console"             , 0, "ShowConsole");
+  Named_Tick_Box tb_retain_on_exit         = Create_named_tick_box("Retain on exit"           , 0, "RetainOnExit");
+  Named_Tick_Box tb_allow_defaults         = Create_named_tick_box("Allow defaults"           , 0, "AllowDefaults");
+  Named_Tick_Box tb_keep_panel_open        = Create_named_tick_box("Keep panel open after run", 1, "KeepPanelOpen");
 
   // Add buttons along bottom
   Horizontal_Group bgroup = Create_button_group();
@@ -89,6 +280,7 @@ Integer show_panel()
 
   Set_border(vg_compile_options, "Compile Options");
   Set_border(vg_macro_arguments, "Macro Arguments");
+  Set_border(vg_run_options    , "Run Options");
 
   Use_browse_button(ib_macro_arguments, FALSE);
 
@@ -97,11 +289,22 @@ Integer show_panel()
   {
     Append(vg_compile_options, vgroup);
     {
-      Append(fb_macro_source, vg_compile_options);
+      Append(fb_macro_source          , vg_compile_options);
+      Append(tb_allow_old_string_calls, vg_compile_options);
+      Append(tb_allow_old_id_calls    , vg_compile_options);
+      Append(tb_keep_cpp_file         , vg_compile_options);
     }
     Append(vg_macro_arguments, vgroup);
     {
       Append(ib_macro_arguments, vg_macro_arguments);
+    }
+    Append(vg_run_options, vgroup);
+    {
+      Append(tb_show_buttons   , vg_run_options);
+      Append(tb_show_console   , vg_run_options);
+      Append(tb_retain_on_exit , vg_run_options);
+      Append(tb_allow_defaults , vg_run_options);
+      Append(tb_keep_panel_open, vg_run_options);
     }
     Append(bgroup, vgroup);
     {
@@ -116,6 +319,10 @@ Integer show_panel()
 
   Integer doit = 1;
   Integer shutdown = 0;
+
+  // Session folder of the last debug build started from here; while its
+  // macro.lock exists that build is still running.
+  Text last_session_dir = "";
 
   while(doit) {
     Integer64 id = 0LL;
@@ -153,6 +360,13 @@ Integer show_panel()
           break;
         }
 
+        // One debug run at a time: the debugger can only follow one copy.
+        if (last_session_dir != "") {
+          if (File_exists(last_session_dir + "\\macro.lock") != 0) {
+            Set_data(message, "The last debug build is still running. Finish it, or stop debugging in VS Code.");
+            break;
+          }
+        }
 
         Text filepath_4dm = "";
         {
@@ -163,14 +377,36 @@ Integer show_panel()
           }
         }
 
-        // Process_Handle ?
-        // open_vs_code(filepath_4dm); ?
-        // wait_for_extension(); ?
+        Integer allow_old_string_calls = 0, allow_old_id_calls = 0, keep_cpp_file = 0;
+        Integer show_buttons = 0, show_console = 0, retain_on_exit = 0, allow_defaults = 0, keep_panel_open = 0;
+        Text    macro_arguments = "";
+        Validate(tb_allow_old_string_calls, allow_old_string_calls);
+        Validate(tb_allow_old_id_calls    , allow_old_id_calls);
+        Validate(tb_keep_cpp_file         , keep_cpp_file);
+        Validate(tb_show_buttons          , show_buttons);
+        Validate(tb_show_console          , show_console);
+        Validate(tb_retain_on_exit        , retain_on_exit);
+        Validate(tb_allow_defaults        , allow_defaults);
+        Validate(tb_keep_panel_open       , keep_panel_open);
+        Validate(ib_macro_arguments       , macro_arguments);
 
         Text filepath_debug_4dm = "";
-        // get_debug_4dm_file_path(filepath_debug_4dm) ?
+        Text session_dir        = "";
+        if (request_debug_build(panel, message, filepath_4dm, filepath_debug_4dm, session_dir) != SUCCESS) {
+          break;
+        }
+        last_session_dir = session_dir;
+        Set_data(message, "Debugging " + filepath_debug_4dm);
 
-        panel_prompt_compile_run_a_macro(filepath_debug_4dm);
+        Integer prompt_ret = panel_prompt_compile_run_a_macro(
+          filepath_debug_4dm,
+          allow_old_string_calls, allow_old_id_calls, keep_cpp_file,
+          macro_arguments,
+          show_buttons, show_console, retain_on_exit, allow_defaults, keep_panel_open
+        );
+        if (prompt_ret != 0) {
+          Set_data(message, "Compile/Run a Macro failed (" + To_text(prompt_ret) + ")");
+        }
         break;
       }
 

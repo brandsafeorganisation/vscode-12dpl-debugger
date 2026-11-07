@@ -11,6 +11,11 @@
 // Each side deletes the files it has read (the macro with File_delete), and
 // the adapter wipes the folder at each launch.
 //
+// macro.lock exists while a copy of the debug build is running (from
+// dbg12d_init until it exits or the debugger stops it). A second copy started
+// meanwhile exits straight away, since two macros can't share one channel.
+// The adapter deletes the lock when its debug session ends.
+//
 // macro -> adapter messages (first line is the kind):
 //   started
 //   stopped <reason>          then: frame <file> <line> <function>   (innermost first)
@@ -54,7 +59,7 @@ export function generateRuntime(opts: RuntimeOptions): string {
 
 #define DBG12D_DIR                    "${esc}"
 #define DBG12D_POLL_MS                ${opts.pollMs ?? 20}
-#define DBG12D_ASYNC_CHECK_INTERVAL   ${opts.asyncCheckInterval ?? 500}
+#define DBG12D_ASYNC_CHECK_INTERVAL   ${opts.asyncCheckInterval ?? 50}
 #define DBG12D_ATTACH_TIMEOUT_MS      ${opts.attachTimeoutMs ?? 5000}
 #define DBG12D_INSPECT_DEPTH          ${opts.inspectDepth ?? 3}
 
@@ -111,6 +116,12 @@ Integer dbg12d_word(Dynamic_Text &p_words, Integer p_index, Integer &p_value)
   p_value = 0;
   if (Get_item(p_words, p_index, l_word) != 0) return -1;
   return From_text(l_word, p_value);
+}
+
+Integer dbg12d_unlock()
+{
+  File_delete(DBG12D_DIR + "macro.lock");
+  return 0;
 }
 
 Integer dbg12d_delete_command(Integer p_seq)
@@ -172,6 +183,7 @@ Integer dbg12d_try_read_command()
       } else if (l_cmd == "terminate") {
         File_close(l_file);
         dbg12d_delete_command(l_next);
+        dbg12d_unlock();
         Exit("Stopped by the debugger");
       }
     }
@@ -187,6 +199,15 @@ void dbg12d_init()
 //  adapter to send breakpoints and a resume command.
 // ----------------------------------------------------------------
 {
+  if (File_exists(DBG12D_DIR + "macro.lock") != 0) {
+    Print("12dPL debugger: this debug build is already running. Finish it, or stop debugging in VS Code, then run it again.\\n");
+    Exit("Debug build already running");
+  }
+  File l_lock;
+  File_open(DBG12D_DIR + "macro.lock", "w", "", l_lock);
+  File_write_line(l_lock, "running");
+  File_close(l_lock);
+
   dbg12d_g_enabled      = 1;
   dbg12d_g_mode         = DBG12D_MODE_RUN;
   dbg12d_g_target_depth = 0;
@@ -211,6 +232,7 @@ void dbg12d_init()
     if (l_resumed == 0) {
       if (l_waited >= DBG12D_ATTACH_TIMEOUT_MS) {
         Print("12dPL debugger: no debugger answered, running without debugging.\\n");
+        dbg12d_unlock();
         dbg12d_g_enabled = 0;
         return;
       }
@@ -248,6 +270,7 @@ void dbg12d_leave()
   if (dbg12d_g_depth <= 0) {
     dbg12d_begin_message("exited");
     dbg12d_end_message();
+    dbg12d_unlock();
     dbg12d_g_enabled = 0;
   }
 }
