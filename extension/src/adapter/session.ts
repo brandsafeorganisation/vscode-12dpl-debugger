@@ -10,12 +10,14 @@ import { INSPECTORS_FILE_NAME, instrumentProgram, InstrumentedFile, RUNTIME_FILE
 import { generateInspectors, resolveInspectors } from '../instrumenter/inspectors';
 import { generateRuntime } from '../instrumenter/runtime';
 import { FileChannel, MacroMessage, Variable } from './channel';
+import { compileArgv } from './command';
 
 export interface LaunchArgs extends DebugProtocol.LaunchRequestArguments {
   program: string;
   outDir?: string;
   stopOnEntry?: boolean;
-  compileCommand?: string;
+  /** Program and arguments, as one string (quote parts with spaces) or a list. Run without a shell. */
+  compileCommand?: string | string[];
   pollIntervalMs?: number;
   /** Inspector signatures for non-text types, e.g. "Integer Get_name(Element elt, Text &name)". */
   inspectors?: string[];
@@ -161,11 +163,20 @@ export class TwelveDDebugSession extends DebugSession {
     }
   }
 
-  private compile(command: string, file: string, outDir: string): Promise<void> {
-    const cmd = command.replace(/\$\{file\}/g, file).replace(/\$\{outDir\}/g, outDir);
-    this.log(`> ${cmd}`);
+  /**
+   * Run the compiler directly (no shell: nothing goes through PowerShell or
+   * cmd, so execution policies don't apply).
+   */
+  private compile(command: string | string[], file: string, outDir: string): Promise<void> {
+    const [program, ...args] = compileArgv(command, file, outDir);
+    if (!program) return Promise.resolve();
+    this.log(`> ${[program, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')}`);
+    if (process.platform === 'win32' && /\.(bat|cmd|ps1)$/i.test(program)) {
+      this.log('compileCommand must be an .exe (such as cc4d.exe): .bat, .cmd and .ps1 files need a shell, which is not used.', 'stderr');
+      return Promise.resolve();
+    }
     return new Promise((resolve) => {
-      const child = cp.spawn(cmd, { shell: true, cwd: path.dirname(file) });
+      const child = cp.spawn(program, args, { cwd: path.dirname(file), shell: false, windowsHide: true });
       child.stdout.on('data', (d) => this.log(String(d), 'stdout'));
       child.stderr.on('data', (d) => this.log(String(d), 'stderr'));
       child.on('close', (code) => {
@@ -177,6 +188,12 @@ export class TwelveDDebugSession extends DebugSession {
         resolve();
       });
     });
+  }
+
+  /** Called by VS Code when the debug session ends (inline adapter). */
+  dispose() {
+    this.channel?.stop();
+    super.dispose();
   }
 
   protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
