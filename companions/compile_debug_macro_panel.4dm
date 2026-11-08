@@ -38,6 +38,7 @@
 #define REQUEST_FILE_NAME       "12dpl_debug_request.txt"
 #define REPLY_TIMEOUT_MS        60000
 #define REPLY_POLL_MS           200
+#define VSCODE_SLOW_MS          5000    // say "waiting for VS Code to start" after this
 #define SW_SHOWNORMAL           1
 
 #define SUCCESS                 0
@@ -192,6 +193,43 @@ Integer read_reply(Text p_reply_file, Text &p_status, Text &p_line_2, Text &p_li
   return SUCCESS;
 }
 
+Integer start_code_exe(Widget p_widget, Text p_code_exe, Text p_uri)
+// ----------------------------------------------------------------
+//  Start VS Code at p_code_exe with p_uri, as Windows does for a
+//  vscode:// link. Returns SUCCESS if it was started.
+// ----------------------------------------------------------------
+{
+  if (File_exists(p_code_exe) == 0) {
+    return FAILURE;
+  }
+  if (Shell_execute(p_widget, "open", p_code_exe, "--open-url -- \"" + p_uri + "\"", "", SW_SHOWNORMAL) != 0) {
+    return FAILURE;
+  }
+  return SUCCESS;
+}
+
+Integer open_vscode(Widget p_widget, Text p_uri)
+// ----------------------------------------------------------------
+//  Hand p_uri to VS Code, starting VS Code if it isn't open.
+//  Opening the vscode:// link does both when VS Code registered the
+//  link with Windows (its installer does). If that fails, start Code.exe
+//  from where the installers put it.
+// ----------------------------------------------------------------
+{
+  if (Shell_execute(p_widget, "open", p_uri, "", "", SW_SHOWNORMAL) == 0) {
+    return SUCCESS;
+  }
+  // User install
+  if (start_code_exe(p_widget, Getenv("LOCALAPPDATA") + "\\Programs\\Microsoft VS Code\\Code.exe", p_uri) == SUCCESS) {
+    return SUCCESS;
+  }
+  // System install
+  if (start_code_exe(p_widget, "C:\\Program Files\\Microsoft VS Code\\Code.exe", p_uri) == SUCCESS) {
+    return SUCCESS;
+  }
+  return FAILURE;
+}
+
 Integer request_debug_build(
   Widget      p_widget,
   Message_Box p_message,
@@ -225,13 +263,19 @@ Integer request_debug_build(
   File_close(l_file);
 
   Set_data(p_message, "Starting the debugger in VS Code...");
-  Shell_execute(p_widget, "open", DEBUGGER_URI + url_encode(l_request), "", "", SW_SHOWNORMAL);
+  if (open_vscode(p_widget, DEBUGGER_URI + url_encode(l_request)) != SUCCESS) {
+    Set_data(p_message, "Could not start VS Code. Is it installed?");
+    return FAILURE;
+  }
 
   Integer l_waited = 0;
   while (File_exists(l_reply) == 0) {
     if (l_waited >= REPLY_TIMEOUT_MS) {
       Set_data(p_message, "VS Code did not answer. Is the 12dPL Debugger extension installed?");
       return FAILURE;
+    }
+    if (l_waited == VSCODE_SLOW_MS) {
+      Set_data(p_message, "Waiting for VS Code to start...");
     }
     Sleep(REPLY_POLL_MS);
     l_waited += REPLY_POLL_MS;
