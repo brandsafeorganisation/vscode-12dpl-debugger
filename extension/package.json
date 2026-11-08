@@ -2,7 +2,7 @@
   "name": "12dpl-debugger",
   "displayName": "12dPL Debugger",
   "description": "Step-through debugging for 12d Model macros (12dPL) via source instrumentation and the Debug Adapter Protocol.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "GeorgeGunter",
   "license": "UNLICENSED",
   "repository": {
@@ -116,6 +116,11 @@
     ],
     "commands": [
       {
+        "command": "12dpl.buildCompanion",
+        "title": "Build Companion Macro (.4do)",
+        "category": "12dPL"
+      },
+      {
         "command": "12dpl.openSettings",
         "title": "Open Debugger Settings",
         "category": "12dPL"
@@ -161,6 +166,11 @@
           "default": "",
           "markdownDescription": "Optional compiler (an `.exe`) run after instrumenting, started directly without a shell. `${file}` is the instrumented entry file, `${outDir}` the output folder."
         },
+        "12dpl.compilerPath": {
+          "type": "string",
+          "default": "C:\\Program Files\\12d\\12dmodel\\15.00\\nt.x64\\cc4d.exe",
+          "markdownDescription": "12d's macro compiler (`cc4d.exe`), used by **12dPL: Build Companion Macro**."
+        },
         "12dpl.trace": {
           "type": "boolean",
           "default": false,
@@ -170,9 +180,10 @@
     }
   },
   "scripts": {
-    "build": "tsc -p .",
+    "build": "node scripts/copy-companion.js && tsc -p .",
+    "vscode:prepublish": "node scripts/copy-companion.js && tsc -p .",
     "watch": "tsc -w -p .",
-    "test": "tsc -p . && node --test out/test/*.test.js",
+    "test": "node scripts/copy-companion.js && tsc -p . && node --test out/test/*.test.js",
     "instrument": "node out/instrumenter/cli.js"
   },
   "dependencies": {

@@ -6,7 +6,8 @@ step over / in / out, pause, call stack, and variable values.
 ## How to use
 
 1. Install the extension or the `vsix` file.
-2. Download or compile the `4do`.
+2. Run **12dPL: Build Companion Macro** from the Command Palette. It compiles
+   the `4do` with 12d's `cc4d.exe` and shows it in Explorer.
 3. Run the `4do`.
 4. Input your macro you'd like to debug into the `4do`.
 5. Hit "Debug/Compile"
@@ -28,6 +29,7 @@ for `12dpl`. The **12dPL: Open Debugger Settings** command also opens it.
 | `12dpl.inspectors`, `12dpl.inspectDepth` | See [Inspectors](#inspectors). |
 | `12dpl.includePaths` | Extra folders to search for quoted `#include`s. 12d's own `CPATH` folders are searched too, after these. |
 | `12dpl.compileCommand` | An `.exe` to run after instrumenting, started directly with no shell. `${file}` is the instrumented entry file and `${outDir}` its folder. Quote parts with spaces, or give a list. |
+| `12dpl.compilerPath` | 12d's `cc4d.exe`, used by **12dPL: Build Companion Macro**. Defaults to `C:\Program Files\12d\12dmodel\15.00\nt.x64\cc4d.exe`. |
 | `12dpl.trace` | Log every message to and from the macro in the Debug Console. |
 
 The instrumented copy goes in `.12dpl-debug` in the workspace folder that
