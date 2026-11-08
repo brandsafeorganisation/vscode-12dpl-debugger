@@ -8,14 +8,8 @@ step over / in / out, pause, call stack, and variable values.
 1. Install the extension or the `vsix` file.
 2. Download or compile the `4do`.
 3. Run the `4do`.
-
-And I'd recommending adding this to `user_menus.4d`:
-
-```C
-[User Macros] {
-  Button "Debug/Compile" fill in
-}
-```
+4. Input your macro you'd like to debug into the `4do`.
+5. Hit "Debug/Compile"
 
 
 ## How it works
