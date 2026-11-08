@@ -2,7 +2,7 @@
   "name": "12dpl-debugger",
   "displayName": "12dPL Debugger",
   "description": "Step-through debugging for 12d Model macros (12dPL) via source instrumentation and the Debug Adapter Protocol.",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "publisher": "GeorgeGunter",
   "license": "UNLICENSED",
   "repository": {
@@ -88,7 +88,22 @@
                   "type": "string"
                 },
                 "description": "Functions that show what is inside a value with no text form, written as 12dPL signatures. The first parameter is the inspected value and each & parameter becomes a member, e.g. \"Integer Get_name(Element elt, Text &name)\". Other parameters can be literals: \"Integer Get_attribute(Element elt, \\\"width\\\", Real &width)\". Inspectors for a type replace the built-in ones for that type (Element: name, type, points, model; Model: name, items).",
-                "default": []
+                "default": [
+                  "Integer Get_name(Element elt, Text &name)",
+                  "Integer Get_type(Element elt, Integer &type)",
+                  "Integer Get_points(Element elt, Integer &points)",
+                  "Integer Get_model(Element elt, Model &model)",
+                  "Integer Get_name(Model model, Text &name)",
+                  "Integer Get_number_of_items(Model model, Integer &items)",
+                  "Integer Get_data(Input_Box box, Text &value)",
+                  "Integer Get_data(Real_Box box, Text &value)",
+                  "Integer Get_data(Integer_Box box, Text &value)",
+                  "Integer Get_data(Model_Box box, Text &value)",
+                  "Integer Get_data(File_Box box, Text &value)",
+                  "Integer Get_data(Tick_Box box, Text &value)",
+                  "Integer Get_data(Named_Tick_Box box, Text &value)",
+                  "Integer Get_data(Message_Box box, Text &value)"
+                ]
               },
               "inspectDepth": {
                 "type": "number",
@@ -139,8 +154,23 @@
           "items": {
             "type": "string"
           },
-          "default": [],
-          "markdownDescription": "Functions that show what is inside values with no text form, as 12dPL signatures. The first parameter is the inspected value and each `&` parameter becomes a member, e.g. `Integer Get_name(Element elt, Text &name)`. Literals can fill other parameters: `Integer Get_attribute(Element elt, \"width\", Real &width)`. Inspectors for a type replace the built-in ones for that type."
+          "default": [
+            "Integer Get_name(Element elt, Text &name)",
+            "Integer Get_type(Element elt, Integer &type)",
+            "Integer Get_points(Element elt, Integer &points)",
+            "Integer Get_model(Element elt, Model &model)",
+            "Integer Get_name(Model model, Text &name)",
+            "Integer Get_number_of_items(Model model, Integer &items)",
+            "Integer Get_data(Input_Box box, Text &value)",
+            "Integer Get_data(Real_Box box, Text &value)",
+            "Integer Get_data(Integer_Box box, Text &value)",
+            "Integer Get_data(Model_Box box, Text &value)",
+            "Integer Get_data(File_Box box, Text &value)",
+            "Integer Get_data(Tick_Box box, Text &value)",
+            "Integer Get_data(Named_Tick_Box box, Text &value)",
+            "Integer Get_data(Message_Box box, Text &value)"
+          ],
+          "markdownDescription": "Functions that show what is inside values with no text form, as 12dPL signatures. The first parameter is the inspected value and each `&` parameter becomes a member, e.g. `Integer Get_name(Element elt, Text &name)`. Literals can fill other parameters: `Integer Get_attribute(Element elt, \"width\", Real &width)`. The built-in ones are listed; edit, remove or add lines. Blank lines are ignored, and one that can't be read is skipped with a warning in the Debug Console."
         },
         "12dpl.inspectDepth": {
           "type": "number",
@@ -182,7 +212,24 @@
           "description": "Log every message to and from the macro in the Debug Console."
         }
       }
-    }
+    },
+    "keybindings": [
+      {
+        "command": "workbench.action.debug.stepInto",
+        "key": "f11",
+        "when": "debugType == '12dpl' && debugState == 'stopped'"
+      },
+      {
+        "command": "workbench.action.debug.stepOver",
+        "key": "f10",
+        "when": "debugType == '12dpl' && debugState == 'stopped'"
+      },
+      {
+        "command": "workbench.action.debug.stepOut",
+        "key": "shift+f11",
+        "when": "debugType == '12dpl' && debugState == 'stopped'"
+      }
+    ]
   },
   "scripts": {
     "build": "node scripts/copy-companion.js && tsc -p .",

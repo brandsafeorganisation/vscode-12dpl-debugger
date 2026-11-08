@@ -80,10 +80,12 @@ export function tokenize(src: string): Token[] {
     if (c === '"' || c === "'") {
       i++;
       while (i < n && src[i] !== c && src[i] !== '\n') {
-        if (src[i] === '\\') i++;
+        if (src[i] === '\\' && src[i + 1] !== '\n') i++;
         i++;
       }
-      i++;
+      // An unclosed quote ends at the end of the line (an apostrophe in "#if 0"
+      // text, say); the newline itself is left to be counted.
+      if (src[i] === c) i++;
       tokens.push({ kind: c === '"' ? 'string' : 'char', text: src.slice(start, i), start, end: i, line: startLine });
       continue;
     }

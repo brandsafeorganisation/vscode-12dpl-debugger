@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { instrumentProgram, instrumentText, VarInfo } from '../instrumenter/instrument';
 import { generateRuntime } from '../instrumenter/runtime';
-import { generateInspectors, parseInspector, resolveInspectors, restrictInspectors } from '../instrumenter/inspectors';
+import { DEFAULT_INSPECTORS, generateInspectors, parseInspector, resolveInspectors, restrictInspectors } from '../instrumenter/inspectors';
 
 function run(src: string, globals: VarInfo[] = [], inspected: string[] = []) {
   const warnings: string[] = [];
@@ -296,4 +296,84 @@ test('panel event calls go through the runtime so stop works after each event', 
   assert.match(text.split('\n')[4], /Integer ret = dbg12d_wait_on_events\(id, cmd, msg\);$/);
   assert.equal(strip(text), src);
   assert.match(generateRuntime({ sessionDir: '/x' }), /Integer l_ret = Wait_on_events\(p_id, p_cmd, p_msg\);/);
+});
+
+test('#if 0 blocks are skipped even when they are not valid 12dPL', () => {
+  const src = [
+    'void f()',                  // 1
+    '{',                         // 2
+    '#if 0',                     // 3
+    "  this isn't { code (",     // 4
+    '#else',                     // 5
+    '  Print("live");',          // 6
+    '#endif',                    // 7
+    '  Print("after");',         // 8
+    '}',                         // 9
+  ].join('\n');
+  const { text, breakpointLines, warnings } = run(src);
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(breakpointLines, [6, 8]);
+  assert.equal(text.split('\n')[3], "  this isn't { code (");
+  assert.equal(strip(text), src);
+});
+
+test('both branches of an unknown #if may open the same brace', () => {
+  const src = [
+    'void f(Integer a)',                   // 1
+    '{',                                   // 2
+    '#ifdef NEW_WAY',                      // 3
+    '  if (a == 1) {',                     // 4
+    '#else',                               // 5
+    '  if (a == 2) {',                     // 6
+    '#endif',                              // 7
+    '    Print("x");',                     // 8
+    '  }',                                 // 9
+    '}',                                   // 10
+    'void g()',                            // 11
+    '{',                                   // 12
+    '  Print("g");',                       // 13
+    '}',                                   // 14
+  ].join('\n');
+  const { text, breakpointLines, warnings } = run(src);
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(breakpointLines, [4, 6, 8, 13]);
+  assert.match(text, /dbg12d_enter\(1, 11, "g"\)/);
+});
+
+test('unbalanced braces are reported with their line', () => {
+  assert.deepEqual(run('void f()\n{\n  if (1) {\n}\n').warnings, ["test.4dm:2: '{' is never closed; instrumentation may be wrong."]);
+  assert.deepEqual(run('void f()\n{\n}\n}\n').warnings, ["test.4dm:4: '}' has no matching '{'; instrumentation may be wrong."]);
+});
+
+test('a call in an if condition followed by macro constants still stops on the next line', () => {
+  const src = [
+    '#define MY_FLAG 2',                                                        // 1
+    'Integer myfunction()',                                                     // 2
+    '{',                                                                        // 3
+    '  return 1;',                                                              // 4
+    '}',                                                                        // 5
+    'void main()',                                                              // 6
+    '{',                                                                        // 7
+    '  Text thing = "";',                                                       // 8
+    '  if (myfunction()) {',                                                    // 9
+    '    myotherfunc(thing, "text", thing, MY_FLAG, ANOTHER_FLAG, "");',        // 10
+    '  }',                                                                      // 11
+    '}',                                                                        // 12
+  ].join('\n');
+  const { breakpointLines, warnings } = run(src);
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(breakpointLines, [4, 8, 9, 10]);
+});
+
+test('the inspectors setting lists the built-in inspectors', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'));
+  assert.deepEqual(pkg.contributes.configuration.properties['12dpl.inspectors'].default, DEFAULT_INSPECTORS);
+});
+
+test('blank inspectors are ignored and unreadable ones skipped with a warning', () => {
+  const warnings: string[] = [];
+  const table = resolveInspectors(['', '   ', 'not an inspector', ...DEFAULT_INSPECTORS], warnings);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /not an inspector.*skipped/);
+  assert.deepEqual(table.get('Element')!.map((i) => i.func), ['Get_name', 'Get_type', 'Get_points', 'Get_model']);
 });

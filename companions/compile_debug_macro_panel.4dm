@@ -40,6 +40,7 @@
 #define REPLY_POLL_MS           200
 #define VSCODE_SLOW_MS          5000    // say "waiting for VS Code to start" after this
 #define SW_SHOWNORMAL           1
+#define DEBUG_FINISHED_FILE     "debug.finished"
 
 #define SUCCESS                 0
 #define FAILURE                 -1
@@ -310,6 +311,139 @@ Integer set_panel_width(Panel &panel, Real new_width)
   return Set_window_size(panel, new_width, panel_height, redraw);
 }
 
+Integer fix_date(Text &date)
+{
+  date = " " + Get_subtext(date, 5, 6) + " " + Get_subtext(date, 1, 3) + " " + Get_subtext(date, 8, 11) + " ";
+  return 0;
+}
+
+Vertical_Group create_display(Text display_name, Text display_value, Integer enable_display)
+{
+  Vertical_Group vgroup   = Create_vertical_group(0);
+  Input_Box      text_box = Create_input_box     ("", Create_message_box(" "));
+
+  Set_border        (vgroup  , display_name);
+  Set_data          (text_box, display_value);
+  Set_enable        (text_box, enable_display);
+  Set_width_in_chars(text_box, Text_length(display_value) * 0.65);
+  Use_browse_button (text_box, 0);
+
+  Append(text_box, vgroup);
+
+  return vgroup;
+}
+
+Integer about_panel(Panel panel, Dynamic_Text dt_text, Text build, Integer enable_display)
+{
+  Hide_widget(panel);
+
+  Text macro_name = Get_macro_name();
+  Text date       = __DATE__;
+  fix_date(date);
+
+  Panel            panel_about = Create_panel           ("12d Model", 1, 1, 1);
+  Vertical_Group   vgroup      = Create_vertical_group  (0);
+  Vertical_Group   vgroup_rhs  = Create_vertical_group  (0);
+  Horizontal_Group hgroup      = Create_horizontal_group(0);
+  Draw_Box         draw_box    = Create_draw_box        (180, 180, 0);
+
+  Horizontal_Group bgroup = Create_button_group();
+  Button           bn_ok  = Create_button      ("OK", "OK");
+
+  Set_sizing_constraints(draw_box, 4, 4);
+
+  Append(vgroup, panel_about);
+  {
+    Append(hgroup, vgroup);
+    {
+      Append(draw_box  , hgroup);
+      Append(vgroup_rhs, hgroup);
+      {
+        Append(create_display("Option Name", macro_name, enable_display), vgroup_rhs);
+        if (build != "") {
+          Append(create_display("Build Number", build, enable_display), vgroup_rhs);
+        }
+        Append(create_display("Build Date", date, enable_display), vgroup_rhs);
+      }
+    }
+    Append(bgroup, vgroup);
+    {
+      Append(bn_ok, bgroup);
+    }
+  }
+
+  Show_widget(panel_about);
+
+  Integer draw_box_width  = 0;
+  Integer draw_box_height = 0;
+  Get_widget_size(draw_box, draw_box_width, draw_box_height);
+
+  Start_batch_draw    (draw_box);
+  Clear               (draw_box, 192, 192, 192);
+  Draw_transparent_BMP(draw_box, Get_absolute_path("$LIB/4dlogo2.bmp"), 0, draw_box_height);
+  End_batch_draw      (draw_box);
+
+  Integer click_lb_down = 0;
+  Integer doit          = 1;
+
+  while (doit) {
+    Integer64 id  = 0LL;
+    Text      cmd = "", msg = "";
+    Integer   ret = Wait_on_events(id, cmd, msg);
+
+    switch (cmd) {
+      case "CodeShutdown" : {
+        Set_exit_code("CodeShutdown");
+        return Shutdown_code;
+      }
+    }
+
+    switch (id) {
+
+      case Get_id64(panel_about) : {
+
+        if (cmd == "Panel Quit") {
+          doit = 0;
+        }
+
+        break;
+      }
+
+      case Get_id64(bn_ok) : {
+
+        doit = 0;
+
+        break;
+      }
+
+      case Get_id64(draw_box) : {
+
+        if (cmd == "mouse_leave" && click_lb_down != 0) {
+          Integer num_items = 0;
+          Get_number_of_items(dt_text, num_items);
+          for (Integer i = 1; i <= num_items; i++) {
+            Text text = "";
+            Get_item(dt_text, i, text);
+            Print(text);
+            Print();
+          }
+          click_lb_down = 0;
+        } else if (cmd == "click_lb_down") {
+          click_lb_down = 1;
+        } else if (cmd == "click_lb_up" || cmd == "click_lb") {
+          click_lb_down = 0;
+        }
+
+        break;
+      }
+    }
+  }
+
+  Show_widget(panel);
+
+  return 0;
+}
+
 Integer show_panel()
 {
   // Panel essentials
@@ -409,6 +543,13 @@ Integer show_panel()
     Text cmd = "", msg = "";
     Integer ret = Wait_on_events(id, cmd, msg);
 
+    if (last_session_dir != "") {
+      if (File_exists(last_session_dir + "\\" + DEBUG_FINISHED_FILE) != 0) {
+        Set_data(message, "Debugging finished");
+        last_session_dir = "";
+      }
+    }
+
     switch (cmd) {
       // case "keystroke" : forgot
       // case "keystroke" :
@@ -429,6 +570,14 @@ Integer show_panel()
 
         if(cmd == "Panel Quit") {
           doit = 0;
+        }
+
+        if(cmd == "Panel About") {
+          Dynamic_Text about_text;
+          if(about_panel(panel, about_text, "", 1) == Shutdown_code) {
+            shutdown = Shutdown_code;
+            doit     = 0;
+          }
         }
 
         break;
@@ -571,6 +720,9 @@ Integer show_panel()
         );
         if (prompt_ret != 0) {
           Set_data(message, "Compile/Run a Macro failed (" + To_text(prompt_ret) + ")");
+        } else if (File_exists(last_session_dir + "\\" + DEBUG_FINISHED_FILE) != 0) {
+          Set_data(message, "Debugging finished");
+          last_session_dir = "";
         }
         break;
       }

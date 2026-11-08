@@ -120,10 +120,19 @@ export function parseInspector(signature: string): Inspector {
  * Build the inspector table. User inspectors for a type replace the defaults
  * for that type; types the user didn't mention keep the defaults.
  */
-export function resolveInspectors(user: string[] = []): InspectorTable {
+export function resolveInspectors(user: string[] = [], warnings: string[] = []): InspectorTable {
   const table: InspectorTable = new Map();
   const add = (i: Inspector) => table.set(i.target, [...(table.get(i.target) ?? []), i]);
-  const mine = user.map(parseInspector);
+  // Blank entries are ignored; one that can't be read is skipped with a warning.
+  const mine = user.flatMap((sig) => {
+    if (typeof sig !== 'string' || sig.trim() === '') return [];
+    try {
+      return [parseInspector(sig)];
+    } catch (e) {
+      warnings.push(`${(e as Error).message}; skipped.`);
+      return [];
+    }
+  });
   const userTypes = new Set(mine.map((i) => i.target));
   for (const d of DEFAULT_INSPECTORS.map(parseInspector)) if (!userTypes.has(d.target)) add(d);
   mine.forEach(add);
