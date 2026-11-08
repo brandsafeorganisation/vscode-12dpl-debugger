@@ -2,7 +2,7 @@
   "name": "12dpl-debugger",
   "displayName": "12dPL Debugger",
   "description": "Step-through debugging for 12d Model macros (12dPL) via source instrumentation and the Debug Adapter Protocol.",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "publisher": "GeorgeGunter",
   "license": "UNLICENSED",
   "repository": {
@@ -170,6 +170,11 @@
           "type": "string",
           "default": "C:\\Program Files\\12d\\12dmodel\\15.00\\nt.x64\\cc4d.exe",
           "markdownDescription": "12d's macro compiler (`cc4d.exe`), used by **12dPL: Build Companion Macro**."
+        },
+        "12dpl.compilerCpath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "`CPATH` for `cc4d.exe` (folders separated by `:`, as 12d does). Empty: use `CPATH` from the environment if set, otherwise work it out from `12dpl.compilerPath`, e.g. `c:\\12d\\15.00\\user_lib:c:\\12d\\15.00\\user:C:\\Program Files\\12d\\12dmodel\\15.00\\library:C:\\Program Files\\12d\\12dmodel\\15.00\\set_ups`."
         },
         "12dpl.trace": {
           "type": "boolean",

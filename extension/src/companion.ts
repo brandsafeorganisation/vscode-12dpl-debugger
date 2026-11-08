@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { compilerCpath } from './compilerEnv';
 
 export const COMPANION_FILE = 'compile_debug_macro_panel.4dm';
 export const DEFAULT_COMPILER = 'C:\\Program Files\\12d\\12dmodel\\15.00\\nt.x64\\cc4d.exe';
@@ -14,7 +15,8 @@ let output: vscode.OutputChannel | undefined;
  *
  * Copies the companion macro shipped with the extension into a folder the
  * user picks, compiles it there with cc4d.exe (12dpl.compilerPath, started
- * directly with no shell) and shows the .4do in Explorer.
+ * directly with no shell, with CPATH set as 12d would) and shows the .4do in
+ * Explorer.
  */
 export async function buildCompanion(context: vscode.ExtensionContext) {
   const source = path.join(context.extensionPath, 'companion', COMPANION_FILE);
@@ -23,7 +25,8 @@ export async function buildCompanion(context: vscode.ExtensionContext) {
     return;
   }
 
-  const compiler = vscode.workspace.getConfiguration('12dpl').get<string>('compilerPath') || DEFAULT_COMPILER;
+  const settings = vscode.workspace.getConfiguration('12dpl');
+  const compiler = settings.get<string>('compilerPath') || DEFAULT_COMPILER;
   if (!fs.existsSync(compiler)) {
     const choice = await vscode.window.showErrorMessage(
       `12dPL: 12d's compiler was not found at ${compiler}.`, 'Set Compiler Path');
@@ -55,12 +58,14 @@ export async function buildCompanion(context: vscode.ExtensionContext) {
   const started = Date.now();
   output ??= vscode.window.createOutputChannel('12dPL Companion');
   output.clear();
+  const cpath = compilerCpath(compiler, settings.get<string>('compilerCpath'), process.env);
+  output.appendLine(`CPATH=${cpath}`);
   output.appendLine(`"${compiler}" ${COMPANION_FILE}   (in ${folder})`);
 
   const result = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'Compiling the companion macro…' },
     () => new Promise<{ error: Error | null; stdout: string; stderr: string }>((resolve) =>
-      execFile(compiler, [COMPANION_FILE], { cwd: folder, windowsHide: true, timeout: 120000 },
+      execFile(compiler, [COMPANION_FILE], { cwd: folder, windowsHide: true, timeout: 120000, env: { ...process.env, CPATH: cpath } },
         (error, stdout, stderr) => resolve({ error, stdout: String(stdout), stderr: String(stderr) }))));
   if (result.stdout) output.append(result.stdout);
   if (result.stderr) output.append(result.stderr);

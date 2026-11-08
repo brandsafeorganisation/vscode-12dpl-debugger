@@ -30,6 +30,7 @@ for `12dpl`. The **12dPL: Open Debugger Settings** command also opens it.
 | `12dpl.includePaths` | Extra folders to search for quoted `#include`s. 12d's own `CPATH` folders are searched too, after these. |
 | `12dpl.compileCommand` | An `.exe` to run after instrumenting, started directly with no shell. `${file}` is the instrumented entry file and `${outDir}` its folder. Quote parts with spaces, or give a list. |
 | `12dpl.compilerPath` | 12d's `cc4d.exe`, used by **12dPL: Build Companion Macro**. Defaults to `C:\Program Files\12d\12dmodel\15.00\nt.x64\cc4d.exe`. |
+| `12dpl.compilerCpath` | `CPATH` for `cc4d.exe`, folders separated by `:`. Empty: `CPATH` from the environment, or worked out from `12dpl.compilerPath` (`c:\12d\15.00\user_lib:c:\12d\15.00\user:<12d>\library:<12d>\set_ups`). |
 | `12dpl.trace` | Log every message to and from the macro in the Debug Console. |
 
 The instrumented copy goes in `.12dpl-debug` in the workspace folder that

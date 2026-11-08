@@ -1,8 +1,8 @@
 // --------------------------------------------------------
-// Macro:
-// Author: Mark
-// Organization: Demo - Mark Man
-// Date: 09/07/2022
+// Macro: Compile/Debug Panel
+// Author: George Gunter
+// Organization: Me
+// Date: 08/11/2026
 // --------------------------------------------------------
 //
 // Compile/Debug a Macro
@@ -15,7 +15,7 @@
 // 3. The 12d Compile/Run option is then run on the instrumented copy, with
 //    the settings from this panel.
 //
-// Handshake with the extension (no scripts or shells involved):
+// Handshake with the extension:
 //   this macro writes the source path to   %TEMP%\12dpl_debug_request.txt
 //     (followed by 12d's include search: CPATH, SET_UPS_4D, USER_4D,
 //      LIB_4D and USER_LIB_4D, one NAME=value per line, so the extension
@@ -31,12 +31,14 @@
   Integer Shutdown_code = 424242;
 }
 
-#include <set_ups.h>
+// Calls cc4d.exe directly so you need your CPATH set up and then it wasn't working anyway think I got the separators working
+// #include <set_ups.h>
 
 #define DEBUGGER_URI            "vscode://georgegunter.12dpl-debugger/debug?request="
 #define REQUEST_FILE_NAME       "12dpl_debug_request.txt"
 #define REPLY_TIMEOUT_MS        60000
 #define REPLY_POLL_MS           200
+#define VSCODE_SLOW_MS          5000    // say "waiting for VS Code to start" after this
 #define SW_SHOWNORMAL           1
 
 #define SUCCESS                 0
@@ -191,6 +193,43 @@ Integer read_reply(Text p_reply_file, Text &p_status, Text &p_line_2, Text &p_li
   return SUCCESS;
 }
 
+Integer start_code_exe(Widget p_widget, Text p_code_exe, Text p_uri)
+// ----------------------------------------------------------------
+//  Start VS Code at p_code_exe with p_uri, as Windows does for a
+//  vscode:// link. Returns SUCCESS if it was started.
+// ----------------------------------------------------------------
+{
+  if (File_exists(p_code_exe) == 0) {
+    return FAILURE;
+  }
+  if (Shell_execute(p_widget, "open", p_code_exe, "--open-url -- \"" + p_uri + "\"", "", SW_SHOWNORMAL) != 0) {
+    return FAILURE;
+  }
+  return SUCCESS;
+}
+
+Integer open_vscode(Widget p_widget, Text p_uri)
+// ----------------------------------------------------------------
+//  Hand p_uri to VS Code, starting VS Code if it isn't open.
+//  Opening the vscode:// link does both when VS Code registered the
+//  link with Windows (its installer does). If that fails, start Code.exe
+//  from where the installers put it.
+// ----------------------------------------------------------------
+{
+  if (Shell_execute(p_widget, "open", p_uri, "", "", SW_SHOWNORMAL) == 0) {
+    return SUCCESS;
+  }
+  // User install
+  if (start_code_exe(p_widget, Getenv("LOCALAPPDATA") + "\\Programs\\Microsoft VS Code\\Code.exe", p_uri) == SUCCESS) {
+    return SUCCESS;
+  }
+  // System install
+  if (start_code_exe(p_widget, "C:\\Program Files\\Microsoft VS Code\\Code.exe", p_uri) == SUCCESS) {
+    return SUCCESS;
+  }
+  return FAILURE;
+}
+
 Integer request_debug_build(
   Widget      p_widget,
   Message_Box p_message,
@@ -224,13 +263,19 @@ Integer request_debug_build(
   File_close(l_file);
 
   Set_data(p_message, "Starting the debugger in VS Code...");
-  Shell_execute(p_widget, "open", DEBUGGER_URI + url_encode(l_request), "", "", SW_SHOWNORMAL);
+  if (open_vscode(p_widget, DEBUGGER_URI + url_encode(l_request)) != SUCCESS) {
+    Set_data(p_message, "Could not start VS Code. Is it installed?");
+    return FAILURE;
+  }
 
   Integer l_waited = 0;
   while (File_exists(l_reply) == 0) {
     if (l_waited >= REPLY_TIMEOUT_MS) {
       Set_data(p_message, "VS Code did not answer. Is the 12dPL Debugger extension installed?");
       return FAILURE;
+    }
+    if (l_waited == VSCODE_SLOW_MS) {
+      Set_data(p_message, "Waiting for VS Code to start...");
     }
     Sleep(REPLY_POLL_MS);
     l_waited += REPLY_POLL_MS;
@@ -253,6 +298,18 @@ Integer request_debug_build(
   return SUCCESS;
 }
 
+Integer set_panel_width(Panel &panel, Real new_width)
+// --------------------------------------------------
+  // Set a new width of the panel
+// --------------------------------------------------
+{
+  Integer redraw = 1;
+  Integer panel_width = 300, panel_height = 300;
+  Integer ierr = Get_widget_size(panel, panel_width, panel_height);
+
+  return Set_window_size(panel, new_width, panel_height, redraw);
+}
+
 Integer show_panel()
 {
   // Panel essentials
@@ -261,12 +318,16 @@ Integer show_panel()
   Message_Box    message     = Create_message_box   ("");
 
 
-  Vertical_Group vg_compile_options = Create_vertical_group(-1);
-  Vertical_Group vg_macro_arguments = Create_vertical_group(-1);
-  Vertical_Group vg_run_options     = Create_vertical_group(-1);
+  Vertical_Group vg_compile_options     = Create_vertical_group(-1);
+  Vertical_Group vg_macro_arguments     = Create_vertical_group(-1);
+  Vertical_Group vg_run_parameters_col1 = Create_vertical_group(-1);
+  Vertical_Group vg_run_parameters_col2 = Create_vertical_group(-1);
+  Vertical_Group vg_keep_panel_open     = Create_vertical_group(-1);
+
+  Horizontal_Group hg_run_parameters = Create_horizontal_group(-1);
 
   // Inputs
-  File_Box  fb_macro_source    = Create_file_box ("Macro source", message, CHECK_FILE_MUST_EXIST, "*.4dm");
+  File_Box  fb_macro_source    = Create_file_box ("Macro source", message, 1 /*CHECK_FILE_MUST_EXIST*/, "*.4dm");
   Input_Box ib_macro_arguments = Create_input_box(""            , message);
 
   // Compile/Run settings (defaults as in 12d's Compile/Run a Macro)
@@ -288,9 +349,10 @@ Integer show_panel()
 
   Set_border(vg_compile_options, "Compile Options");
   Set_border(vg_macro_arguments, "Macro Arguments");
-  Set_border(vg_run_options    , "Run Options");
+  Set_border(hg_run_parameters , "Run Parameters" );
+  Set_border(vg_keep_panel_open, "-"              );
 
-  Use_browse_button(ib_macro_arguments, FALSE);
+  Use_browse_button(ib_macro_arguments, 0 /*FALSE*/);
 
   // Panel layout
   Append(vgroup, panel);
@@ -306,24 +368,34 @@ Integer show_panel()
     {
       Append(ib_macro_arguments, vg_macro_arguments);
     }
-    Append(vg_run_options, vgroup);
+    Append(hg_run_parameters, vgroup);
     {
-      Append(tb_show_buttons   , vg_run_options);
-      Append(tb_show_console   , vg_run_options);
-      Append(tb_retain_on_exit , vg_run_options);
-      Append(tb_allow_defaults , vg_run_options);
-      Append(tb_keep_panel_open, vg_run_options);
+      Append(vg_run_parameters_col1, hg_run_parameters);
+      {
+        Append(tb_show_buttons   , vg_run_parameters_col1);
+        Append(tb_show_console   , vg_run_parameters_col1);
+      }
+      Append(vg_run_parameters_col2, hg_run_parameters);
+      {
+        Append(tb_retain_on_exit , vg_run_parameters_col2);
+        Append(tb_allow_defaults , vg_run_parameters_col2);
+      }
     }
+    Append(vg_keep_panel_open, vgroup);
+    {
+      Append(tb_keep_panel_open, vg_keep_panel_open);
+    }
+    Append(message, vgroup);
     Append(bgroup, vgroup);
     {
       Append(bn_compile_debug, bgroup);
       Append(bn_finish       , bgroup);
       Append(bn_help         , bgroup);
     }
-    Append(message, vgroup);
   }
 
   Show_widget(panel);
+  set_panel_width(panel, 379); // Same width as OG
 
   Integer doit = 1;
   Integer shutdown = 0;
@@ -376,27 +448,112 @@ Integer show_panel()
           }
         }
 
-        Text filepath_4dm = "";
-        {
-          Integer ierr = Validate(fb_macro_source, GET_FILE_MUST_EXIST, filepath_4dm);
-          if (ierr != FILE_EXISTS) {
-            Set_error_message(fb_macro_source, "File must exist");
+        Text    filepath_4dm           = "";
+        Integer allow_old_string_calls = 0 /*FALSE*/;
+        Integer allow_old_id_calls     = 0 /*FALSE*/;
+        Integer keep_cpp_file          = 0 /*FALSE*/;
+        Integer show_buttons           = 0 /*FALSE*/;
+        Integer show_console           = 0 /*FALSE*/;
+        Integer retain_on_exit         = 0 /*FALSE*/;
+        Integer allow_defaults         = 0 /*FALSE*/;
+        Integer keep_panel_open        = 1 /*TRUE*/;
+        Text    macro_arguments        = "";
+
+        { // Compile options
+
+          { // Macro source
+            Integer ierr = Validate(fb_macro_source, 17 /*GET_FILE_MUST_EXIST*/, filepath_4dm);
+            if (ierr != 5 /*FILE_EXISTS*/) {
+              Set_error_message(fb_macro_source, "File must exist");
+              break;
+            }
+
+            // Lazy hack?
+            Text directory_4dm = "";
+            Get_directory(fb_macro_source, directory_4dm);
+
+            // Remove trailing .
+            directory_4dm = Get_subtext(directory_4dm, 0, Text_length(directory_4dm) - 1);
+            filepath_4dm = Get_absolute_path(directory_4dm + filepath_4dm);
+          }
+
+          { // Allow old string calls
+            Integer ierr = Validate(tb_allow_old_string_calls, allow_old_string_calls);
+            if (ierr != 1 /*TRUE*/) {
+              Set_data(message, "Error - Allow old string calls");
+              break;
+            }
+          }
+
+          { // Allow old id calls
+            Integer ierr = Validate(tb_allow_old_id_calls, allow_old_id_calls);
+            if (ierr != 1 /*TRUE*/) {
+              Set_data(message, "Error - Allow old id calls");
+              break;
+            }
+          }
+
+          { // Keep cpp file
+            Integer ierr = Validate(tb_keep_cpp_file, keep_cpp_file);
+            if (ierr != 1 /*TRUE*/) {
+              Set_data(message, "Error - keep cpp file");
+              break;
+            }
+          }
+
+        }
+
+        { // Macro Arguments
+          Get_data(ib_macro_arguments, macro_arguments);
+          // Integer ierr = Validate(ib_macro_arguments, macro_arguments);
+        }
+
+        { // Run Parameters
+
+          { // Show buttons
+            Integer ierr = Validate(tb_show_buttons, show_buttons);
+            if (ierr != 1 /*TRUE*/) {
+              Set_data(message, "Error - Show buttons");
+              break;
+            }
+          }
+
+          { // Show console
+            Integer ierr = Validate(tb_show_console, show_console);
+            if (ierr != 1 /*TRUE*/) {
+              Set_data(message, "Error - Show console");
+              break;
+            }
+          }
+
+          { // Retain on exit
+            Integer ierr = Validate(tb_retain_on_exit, retain_on_exit);
+            if (ierr != 1 /*TRUE*/) {
+              Set_data(message, "Error - Retain on exit");
+              break;
+            }
+          }
+
+          { // Allow defaults
+            Integer ierr = Validate(tb_allow_defaults, allow_defaults);
+            if (ierr != 1 /*TRUE*/) {
+              Set_data(message, "Error - allow defaults");
+              break;
+            }
+          }
+
+        }
+
+        { // Keep panel open after run
+          Integer ierr = Validate(tb_keep_panel_open, keep_panel_open);
+          if (ierr != 1 /*TRUE*/) {
+            Set_data(message, "Error - Keep panel open after run");
             break;
           }
         }
 
-        Integer allow_old_string_calls = 0, allow_old_id_calls = 0, keep_cpp_file = 0;
-        Integer show_buttons = 0, show_console = 0, retain_on_exit = 0, allow_defaults = 0, keep_panel_open = 0;
-        Text    macro_arguments = "";
-        Validate(tb_allow_old_string_calls, allow_old_string_calls);
-        Validate(tb_allow_old_id_calls    , allow_old_id_calls);
-        Validate(tb_keep_cpp_file         , keep_cpp_file);
-        Validate(tb_show_buttons          , show_buttons);
-        Validate(tb_show_console          , show_console);
-        Validate(tb_retain_on_exit        , retain_on_exit);
-        Validate(tb_allow_defaults        , allow_defaults);
-        Validate(tb_keep_panel_open       , keep_panel_open);
-        Validate(ib_macro_arguments       , macro_arguments);
+
+
 
         Text filepath_debug_4dm = "";
         Text session_dir        = "";
