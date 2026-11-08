@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { TwelveDDebugSession, writeReply } from './adapter/session';
 import { decode } from './adapter/channel';
 import { parseRequest } from './adapter/request';
+import { buildCompanion } from './companion';
 
 /** Launch settings that can also come from the Settings editor (12dpl.*). */
 const SETTINGS = ['stopOnEntry', 'inspectors', 'inspectDepth', 'includePaths', 'compileCommand', 'trace'] as const;
@@ -80,7 +81,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (!config.replyFile) {
         if (config.type === '12dpl') {
           vscode.window.showInformationMessage(
-            '12dPL debugging starts from 12d: run the Compile/Debug a Macro panel (companions/compile_debug_macro_panel.4dm).');
+            '12dPL debugging starts from 12d: run the Compile/Debug a Macro panel. To get it, run "12dPL: Build Companion Macro".');
         }
         return undefined;
       }
@@ -103,6 +104,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerUriHandler({ handleUri }),
     vscode.debug.onDidStartDebugSession((s) => { if (s.type === '12dpl') sessions.add(s); }),
     vscode.debug.onDidTerminateDebugSession((s) => sessions.delete(s)),
+    vscode.commands.registerCommand('12dpl.buildCompanion', () => buildCompanion(context)),
     vscode.commands.registerCommand('12dpl.openSettings', () =>
       vscode.commands.executeCommand('workbench.action.openSettings', '@ext:georgegunter.12dpl-debugger')),
   );
