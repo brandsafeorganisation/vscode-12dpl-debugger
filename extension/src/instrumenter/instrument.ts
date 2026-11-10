@@ -142,8 +142,63 @@ type BraceKind = 'function' | 'block' | 'init' | 'global' | 'do' | 'switch';
 
 interface Brace {
   kind: BraceKind;
+  /** Line of the '{'. */
+  line: number;
   /** Variables declared directly in this block. */
   vars: VarInfo[];
+}
+
+/** What a preprocessor directive does to the code after it. */
+type PpRole = 'if' | 'alt' | 'endif' | 'other';
+
+/**
+ * Work out which tokens the compiler actually sees. Code under "#if 0" (or
+ * after the "#else" of an "#if 1") is dropped: it may not even be valid
+ * 12dPL (the 12d library does this). Other conditions can't be evaluated
+ * here, so every branch is kept; 'alt' marks the start of a second or later
+ * kept branch, where the instrumenter rewinds to the state at the "#if".
+ */
+function preprocessorPass(toks: Token[]): { active: Token[]; roles: Map<Token, PpRole> } {
+  type Frame = { parentActive: boolean; active: boolean; taken: boolean; anyKept: boolean };
+  const stack: Frame[] = [];
+  const roles = new Map<Token, PpRole>();
+  const active: Token[] = [];
+  const isActive = () => stack.length === 0 || stack[stack.length - 1].active;
+  // 0 / 1 for a literal condition, undefined otherwise.
+  const literal = (cond: string): 0 | 1 | undefined => {
+    const c = cond.replace(/\/\*.*?\*\//g, '').replace(/\/\/.*$/, '').trim().replace(/^\((.*)\)$/, '$1').trim();
+    return c === '0' ? 0 : c === '1' ? 1 : undefined;
+  };
+  for (const t of toks) {
+    if (t.kind !== 'preproc') {
+      if (isActive()) active.push(t);
+      continue;
+    }
+    const d = t.text.replace(/^#\s*/, '');
+    const word = /^\w+/.exec(d)?.[0] ?? '';
+    if (word === 'if' || word === 'ifdef' || word === 'ifndef') {
+      const parentActive = isActive();
+      const value = word === 'if' ? literal(d.slice(2)) : undefined;
+      stack.push({ parentActive, active: parentActive && value !== 0, taken: value === 1, anyKept: parentActive && value !== 0 });
+      if (parentActive) { roles.set(t, 'if'); active.push(t); }
+    } else if ((word === 'else' || word === 'elif') && stack.length > 0) {
+      const f = stack[stack.length - 1];
+      const value = word === 'elif' ? literal(d.slice(4)) : 1;
+      const keep = f.parentActive && !f.taken && value !== 0;
+      if (keep) roles.set(t, f.anyKept ? 'alt' : 'other');
+      if (f.parentActive) active.push(t);
+      f.active = keep;
+      f.anyKept ||= keep;
+      if (word === 'else' || value === 1) f.taken ||= keep;
+    } else if (word === 'endif' && stack.length > 0) {
+      const f = stack.pop()!;
+      if (f.parentActive) { roles.set(t, 'endif'); active.push(t); }
+    } else if (isActive()) {
+      roles.set(t, 'other');
+      active.push(t);
+    }
+  }
+  return { active, roles };
 }
 
 /**
@@ -155,7 +210,7 @@ export function instrumentText(
   ctx: FileContext,
   rewriteInclude: (directive: string) => string,
 ): { text: string; breakpointLines: number[]; variables: Record<number, ScopedVar[]> } {
-  const toks = tokenize(src);
+  const { active: toks, roles: ppRoles } = preprocessorPass(tokenize(src));
   const ins: Insertion[] = [];
   const replacements: { start: number; end: number; text: string }[] = [];
   const bpLines = new Set<number>();
@@ -283,11 +338,39 @@ export function instrumentText(
 
   let lastClosedBraceKind: BraceKind | undefined;
 
+  // State at each open "#if", so a second branch starts from where the first did.
+  type State = {
+    braces: Brace[]; parenDepth: number; inFunction: boolean; functionParams: VarInfo[]; functionName: string;
+    functionPpDepth: number; openReturn: typeof openReturn; lastFunctionReturnEnd: Token | undefined;
+  };
+  const capture = (): State => ({
+    braces: braces.map((b) => ({ ...b, vars: [...b.vars] })), parenDepth, inFunction, functionParams, functionName,
+    functionPpDepth, openReturn, lastFunctionReturnEnd,
+  });
+  const restore = (st: State) => {
+    braces.splice(0, braces.length, ...st.braces.map((b) => ({ ...b, vars: [...b.vars] })));
+    ({ parenDepth, inFunction, functionParams, functionName, functionPpDepth, openReturn, lastFunctionReturnEnd } = st);
+  };
+  const ppStates: { atIf: State; firstEnd?: State }[] = [];
+
   for (const t of toks) {
     if (t.kind === 'preproc') {
+      const role = ppRoles.get(t);
+      if (role === 'if') {
+        ppDepth++;
+        ppStates.push({ atIf: capture() });
+      } else if (role === 'endif') {
+        ppDepth--;
+        const st = ppStates.pop();
+        if (st?.firstEnd) restore(st.firstEnd);
+      } else if (role === 'alt') {
+        const st = ppStates[ppStates.length - 1];
+        if (st) {
+          st.firstEnd ??= capture();
+          restore(st.atIf);
+        }
+      }
       const d = t.text.replace(/^#\s*/, '');
-      if (/^if/.test(d)) ppDepth++;
-      else if (/^endif/.test(d)) ppDepth--;
       if (/^include\b/.test(d)) {
         const rewritten = rewriteInclude(t.text);
         if (rewritten !== t.text) replacements.push({ start: t.start, end: t.end, text: rewritten });
@@ -365,10 +448,11 @@ export function instrumentText(
           const open = matchOpenParen(sigIndex.get(prev)!);
           if (open > 0 && sig[open - 1].text === 'switch') kind = 'switch';
         }
-        braces.push({ kind, vars: [] });
+        braces.push({ kind, line: t.line, vars: [] });
         break;
       }
       case '}': {
+        if (braces.length === 0) ctx.warnings.push(`${ctx.sourcePath}:${t.line}: '}' has no matching '{'; instrumentation may be wrong.`);
         const b = braces.pop();
         lastClosedBraceKind = b?.kind;
         if (b?.kind === 'function') {
@@ -415,7 +499,7 @@ export function instrumentText(
     }
   }
 
-  if (braces.length !== 0) ctx.warnings.push(`${ctx.sourcePath}: unbalanced braces (${braces.length} left open); instrumentation may be wrong.`);
+  for (const b of braces) ctx.warnings.push(`${ctx.sourcePath}:${b.line}: '{' is never closed; instrumentation may be wrong.`);
 
   // ---- apply edits ----
   type Edit = { start: number; end: number; text: string; order: number };

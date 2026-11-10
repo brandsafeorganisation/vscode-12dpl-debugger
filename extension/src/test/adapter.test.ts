@@ -294,6 +294,8 @@ test('answers the companion macro, logs with trace, and stops a macro that start
     await dap.request('disconnect', {});
     assert.equal(fs.readFileSync(path.join(sessionDir, 'a2m_1.txt'), 'latin1').trim(), 'terminate');
     assert.ok(!fs.existsSync(path.join(sessionDir, 'macro.lock')));
+    // The companion panel looks for this to say "Debugging finished".
+    assert.ok(fs.existsSync(path.join(sessionDir, 'debug.finished')));
     assert.ok(dap.output.some((o) => o.startsWith('to macro: terminate')));
   } finally {
     proc.kill();

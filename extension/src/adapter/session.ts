@@ -41,6 +41,9 @@ export interface LaunchArgs extends DebugProtocol.LaunchRequestArguments {
  * session folder, or "error" and a message. Written to a temporary name and
  * renamed, so the macro (which polls for the file) never reads half of it.
  */
+/** Written to the session folder when the debug session ends. */
+export const FINISHED_FILE_NAME = 'debug.finished';
+
 export function writeReply(replyFile: string, lines: string[]) {
   const tmp = replyFile + '.tmp';
   fs.writeFileSync(tmp, '\uFEFF' + lines.join('\r\n') + '\r\n', 'utf8');
@@ -163,7 +166,9 @@ export class TwelveDDebugSession extends DebugSession {
       if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
         throw new Error(`outDir (${outDir}) must not contain the program; it is deleted on every launch.`);
       }
-      const allInspectors = resolveInspectors(args.inspectors ?? []);
+      const inspectorWarnings: string[] = [];
+      const allInspectors = resolveInspectors(args.inspectors ?? [], inspectorWarnings);
+      for (const w of inspectorWarnings) this.log('warning: ' + w, 'stderr');
       fs.rmSync(outDir, { recursive: true, force: true });
       if (args.cpath?.length) this.log(`12d include folders (CPATH):\n  ${args.cpath.join('\n  ')}`);
       const includePaths = [...(args.includePaths ?? []), ...(args.cpath ?? [])];
@@ -380,6 +385,10 @@ export class TwelveDDebugSession extends DebugSession {
     // The macro removes its lock when it sees terminate; if it died instead
     // (a 12d error), nothing else would.
     if (this.sessionDir) fs.rmSync(path.join(this.sessionDir, 'macro.lock'), { force: true });
+    // Tells the companion panel the session is over (it shows "Debugging finished").
+    if (this.sessionDir && fs.existsSync(this.sessionDir)) {
+      try { fs.writeFileSync(path.join(this.sessionDir, FINISHED_FILE_NAME), ''); } catch { /* best effort */ }
+    }
     // Give the macro a moment to see the terminate message before we stop listening.
     setTimeout(() => this.channel?.stop(), 200);
   }

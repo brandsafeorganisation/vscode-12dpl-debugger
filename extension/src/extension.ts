@@ -46,6 +46,9 @@ async function handleUri(uri: vscode.Uri) {
       return fail(`A debug session (${running.name}) is already running in VS Code. Stop it there first.`);
     }
 
+    // Start each run with an empty Debug Console, not the last run's output.
+    await vscode.commands.executeCommand('workbench.debug.panel.action.clearReplAction').then(undefined, () => undefined);
+
     const doc = await vscode.workspace.openTextDocument(program);
     await vscode.window.showTextDocument(doc, { preview: false });
     const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
