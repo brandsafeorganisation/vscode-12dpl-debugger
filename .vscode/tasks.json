@@ -1,0 +1,35 @@
+{
+  // Both tasks are "process" tasks: VS Code starts the program directly
+  // rather than through the default terminal shell, so PowerShell's
+  // execution policy (which blocks npm.ps1) doesn't apply.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build extension",
+      "type": "process",
+      "command": "node",
+      "args": ["${workspaceFolder}/extension/node_modules/typescript/bin/tsc", "-p", "${workspaceFolder}/extension"],
+      "problemMatcher": "$tsc",
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "install extension dependencies",
+      "type": "process",
+      "command": "npm",
+      "args": ["install"],
+      "windows": { "command": "npm.cmd" },
+      "options": { "cwd": "${workspaceFolder}/extension" },
+      "problemMatcher": []
+    },
+    {
+      "label": "test extension",
+      "type": "process",
+      "command": "node",
+      "args": ["--test", "out/test/*.test.js"],
+      "options": { "cwd": "${workspaceFolder}/extension" },
+      "dependsOn": "build extension",
+      "problemMatcher": [],
+      "group": "test"
+    }
+  ]
+}
