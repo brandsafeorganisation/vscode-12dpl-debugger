@@ -112,7 +112,12 @@ test('launch, breakpoints, stepping, variables, exit', async () => {
       { enter: 'main', file: 1, line: 12 },
       { hit: 14, file: 1, vars: [g('0')] },
       { hit: 15, file: 1, vars: [['L', 'Integer', 'l_a', '1'], g('0')] },
-      { hit: 16, file: 1, vars: [['L', 'Integer', 'l_a', '1'], g('0')] },
+      // dbg12d_globals() sends every global; ones not in scope here (and their
+      // members) are left out, as are members of variables that aren't listed.
+      { hit: 16, file: 1, vars: [
+        ['L', 'Integer', 'l_a', '1'], g('0'),
+        ['G', 'Element', 'g_later', ''], ['G', 'Text', 'g_later.name', 'x'], ['L', 'Text', 'l_gone.name', 'y'],
+      ] },
       { enter: 'helper', file: 1, line: 5 },
       { hit: 7, file: 1, vars: [['L', 'Integer', 'p_x', '1'], g('0')] },
       { hit: 8, file: 1, vars: [['L', 'Integer', 'p_x', '1'], ['L', 'Integer', 'l_y', '2'], g('0')] },
@@ -154,6 +159,9 @@ test('launch, breakpoints, stepping, variables, exit', async () => {
     assert.deepEqual(globals.variables.map((v: any) => [v.name, v.value]), [['g_count', '0']]);
     const hover = await dap.request('evaluate', { expression: 'l_a', frameId: 0, context: 'hover' });
     assert.equal(hover.result, '1');
+    // A global that isn't in scope on this line can't be hovered, nor its members.
+    await assert.rejects(dap.request('evaluate', { expression: 'g_later.name', frameId: 0, context: 'repl' }));
+    await assert.rejects(dap.request('evaluate', { expression: 'g_later', frameId: 0, context: 'repl' }));
 
     // continue -> breakpoint in helper with two frames
     await dap.request('continue', { threadId: 1 });

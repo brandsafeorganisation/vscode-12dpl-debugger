@@ -377,8 +377,10 @@ void dbg12d_v_text(Text p_scope, Text p_name, Text p_value)       { dbg12d_v_lin
 void dbg12d_v_uid(Text p_scope, Text p_name, Uid p_value)         { dbg12d_v_line(p_scope, "Uid", p_name, To_text(p_value)); }
 void dbg12d_v_guid(Text p_scope, Text p_name, Guid p_value)       { dbg12d_v_line(p_scope, "Guid", p_name, To_text(p_value)); }
 
-// Inspector dumps for other types; defined in ${INSPECTORS_FILE_NAME}, included at the end of the program.
+// Inspector dumps for other types, and the dump of every global; defined in
+// ${INSPECTORS_FILE_NAME}, included at the end of the program.
 ${inspectorPrototypes(inspectors)}
+void dbg12d_globals();
 
 #endif
 `;

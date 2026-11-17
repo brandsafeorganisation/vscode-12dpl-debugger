@@ -338,10 +338,14 @@ Integer about_panel(Panel panel, Dynamic_Text dt_text, Text build, Integer enabl
   Hide_widget(panel);
 
   Text macro_name = Get_macro_name();
-  Text date       = __DATE__;
+#if defined(__BASE_FILE_DATE__)
+  Text date = __BASE_FILE_DATE__;
+#else
+  Text date = __DATE__;
+#endif
   fix_date(date);
 
-  Panel            panel_about = Create_panel           ("12d Model", 1, 1, 1);
+  Panel            panel_about = Create_panel           ("12d Model", 1);
   Vertical_Group   vgroup      = Create_vertical_group  (0);
   Vertical_Group   vgroup_rhs  = Create_vertical_group  (0);
   Horizontal_Group hgroup      = Create_horizontal_group(0);
@@ -376,7 +380,7 @@ Integer about_panel(Panel panel, Dynamic_Text dt_text, Text build, Integer enabl
 
   Integer draw_box_width  = 0;
   Integer draw_box_height = 0;
-  Get_widget_size(draw_box, draw_box_width, draw_box_height);
+  Get_size(draw_box, draw_box_width, draw_box_height);
 
   Start_batch_draw    (draw_box);
   Clear               (draw_box, 192, 192, 192);

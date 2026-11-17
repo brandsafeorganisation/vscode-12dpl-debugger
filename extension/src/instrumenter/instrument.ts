@@ -13,6 +13,8 @@
 //   return ...;         dbg12d_leave(); return ...;
 //                       ({ dbg12d_leave(); return ...; } as a brace-less if/else body)
 //   function's final }  dbg12d_leave(); }
+//                       (globals are dumped by one generated function,
+//                       dbg12d_globals(), so a hit doesn't grow with them)
 //   Wait_on_events(...) dbg12d_wait_on_events(...)   (and Wait_on_widgets):
 //                       a panel macro spends most of its time in there, so
 //                       the wrapper checks for stop/pause after every event
@@ -24,6 +26,11 @@
 // (no breakpoint on those lines), and so is the body of a switch itself, where
 // 12d only allows case/default labels with braced blocks (the code inside
 // those blocks is instrumented as usual).
+//
+// #define'd macros are read so a call like CHECK(x) whose expansion ends in
+// ';' or '}' counts as a statement boundary, braces opened or closed by a
+// macro (BEGIN_LOOP / END_LOOP) keep the block nesting right, and an
+// object-like macro naming a type (#define Int Integer) declares variables.
 //
 // Quoted #includes are followed and rewritten to absolute paths of the
 // instrumented copies, so the program compiles the same from inside 12d (where
@@ -68,6 +75,8 @@ export interface InstrumentedFile {
 
 export interface InstrumentResult {
   entryOutput: string;
+  /** Body of dbg12d_globals(): dump calls for every global the program declares. */
+  globalsDump: string[];
   files: InstrumentedFile[];
   warnings: string[];
   /** Inspected types the program dumps directly (generate inspectors for these). */
@@ -127,6 +136,69 @@ interface Insertion {
   order: number;
 }
 
+/** What the instrumenter needs to know about a #define. */
+export interface MacroInfo {
+  params: boolean;
+  /** First and last token of the expansion (after expanding nested macros). */
+  first: string;
+  last: string;
+  /** '{' minus '}' in the expansion. */
+  braceDelta: number;
+  hasReturn: boolean;
+  /** The type an object-like macro stands for, if its whole body is a type name. */
+  typeAlias?: string;
+}
+
+/** Read "#define NAME[(params)] body" (backslash continuations allowed). */
+function parseDefine(directive: string): { name: string; params: boolean; body: string } | undefined {
+  const d = directive.replace(/\\\r?\n/g, ' ');
+  const m = /^#\s*define\s+([A-Za-z_]\w*)(\([^)]*\))?(.*)$/s.exec(d);
+  if (!m) return undefined;
+  return { name: m[1], params: m[2] !== undefined, body: m[3] };
+}
+
+function analyseMacro(params: boolean, body: string, macros: ReadonlyMap<string, MacroInfo>): MacroInfo {
+  const toks = tokenize(body).filter((t) => t.kind !== 'preproc');
+  let braceDelta = 0;
+  let hasReturn = false;
+  for (const t of toks) {
+    if (t.text === '{') braceDelta++;
+    else if (t.text === '}') braceDelta--;
+    else if (t.text === 'return') hasReturn = true;
+    else if (t.kind === 'ident') {
+      const inner = macros.get(t.text);
+      if (inner) { braceDelta += inner.braceDelta; hasReturn ||= inner.hasReturn; }
+    }
+  }
+  const edge = (t: Token | undefined, side: 'first' | 'last'): string => {
+    if (!t) return '';
+    const inner = t.kind === 'ident' ? macros.get(t.text) : undefined;
+    return inner ? inner[side] : t.text;
+  };
+  let first = edge(toks[0], 'first');
+  let last = toks[toks.length - 1]?.text ?? '';
+  // NAME(args) at the end: what that call expands to ends the same way.
+  const tail = toks[toks.length - 1];
+  if (tail?.text === ')') {
+    let depth = 0;
+    for (let j = toks.length - 1; j >= 0; j--) {
+      if (toks[j].text === ')') depth++;
+      else if (toks[j].text === '(' && --depth === 0) {
+        const callee = toks[j - 1] && macros.get(toks[j - 1].text);
+        if (callee?.params) last = callee.last;
+        break;
+      }
+    }
+  } else {
+    last = edge(tail, 'last');
+  }
+  const single = toks.length === 1 ? toks[0].text : undefined;
+  const typeAlias = !params && single !== undefined
+    ? (TYPE_NAMES.has(single) ? single : macros.get(single)?.typeAlias)
+    : undefined;
+  return { params, first, last, braceDelta, hasReturn, typeAlias };
+}
+
 interface FileContext {
   id: number;
   globals: VarInfo[];
@@ -136,6 +208,8 @@ interface FileContext {
   inspected?: ReadonlySet<string>;
   /** Filled with the inspected types this file dumps. */
   usedTypes?: Set<string>;
+  /** #defines seen so far (shared by a program's files, in include order). */
+  macros?: Map<string, MacroInfo>;
 }
 
 type BraceKind = 'function' | 'block' | 'init' | 'global' | 'do' | 'switch';
@@ -166,7 +240,7 @@ function preprocessorPass(toks: Token[]): { active: Token[]; roles: Map<Token, P
   const isActive = () => stack.length === 0 || stack[stack.length - 1].active;
   // 0 / 1 for a literal condition, undefined otherwise.
   const literal = (cond: string): 0 | 1 | undefined => {
-    const c = cond.replace(/\/\*.*?\*\//g, '').replace(/\/\/.*$/, '').trim().replace(/^\((.*)\)$/, '$1').trim();
+    const c = cond.replace(/\r/g, '').replace(/\/\*.*?\*\//g, '').replace(/\/\/.*$/, '').trim().replace(/^\((.*)\)$/, '$1').trim();
     return c === '0' ? 0 : c === '1' ? 1 : undefined;
   };
   for (const t of toks) {
@@ -234,6 +308,11 @@ export function instrumentText(
   // The ';' ending a return that is a direct statement of the function body.
   let lastFunctionReturnEnd: Token | undefined;
   const inspected = ctx.inspected ?? new Set<string>();
+  const macros = ctx.macros ?? new Map<string, MacroInfo>();
+  /** The real type a type name stands for (following #define aliases), or undefined. */
+  const typeOf = (name: string): string | undefined => (TYPE_NAMES.has(name) ? name : macros.get(name)?.typeAlias);
+  // Last token of each macro call seen, with what the call expands to.
+  const macroEnds = new Map<Token, { info: MacroInfo; start: Token }>();
 
   const sig = toks.filter((t) => t.kind !== 'preproc');
   // Map from token to index in sig for prev/next lookups
@@ -271,17 +350,17 @@ export function instrumentText(
       ...globals.map((v) => ({ ...v, scope: 'G' as const })),
     ];
     const parts: string[] = [];
-    for (const v of lineVars[line]) {
-      const call = dumpCall(v, v.scope, inspected, ctx.usedTypes);
+    for (const v of locals) {
+      const call = dumpCall(v, 'L', inspected, ctx.usedTypes);
       if (call) parts.push(call);
     }
-    parts.push('dbg12d_wait();');
+    parts.push('dbg12d_globals(); dbg12d_wait();');
     return `if (dbg12d_hit(${ctx.id}, ${line})) { ${parts.join(' ')} } `;
   };
 
   /** Parse a declaration starting at sig[k] (a type name) and return the declared variables. */
   const parseDeclaration = (k: number): VarInfo[] => {
-    const type = sig[k].text;
+    const type = typeOf(sig[k].text) ?? sig[k].text;
     const vars: VarInfo[] = [];
     let j = k + 1;
     let depth = 0;
@@ -316,9 +395,10 @@ export function instrumentText(
       if ((depth === 0 && t.text === ',') || j === close) {
         const group = sig.slice(groupStart, j);
         const idents = group.filter((g) => g.kind === 'ident');
-        if (idents.length >= 2 && TYPE_NAMES.has(idents[0].text)) {
+        const type = idents.length >= 2 ? typeOf(idents[0].text) : undefined;
+        if (type) {
           const name = idents[idents.length - 1].text;
-          out.push({ name, type: idents[0].text, isArray: group.some((g) => g.text === '[') });
+          out.push({ name, type, isArray: group.some((g) => g.text === '[') });
         }
         groupStart = j + 1;
       }
@@ -371,6 +451,10 @@ export function instrumentText(
         }
       }
       const d = t.text.replace(/^#\s*/, '');
+      const def = parseDefine(t.text);
+      if (def) macros.set(def.name, analyseMacro(def.params, def.body, macros));
+      const undef = /^undef\s+(\w+)/.exec(d);
+      if (undef) macros.delete(undef[1]);
       if (/^include\b/.test(d)) {
         const rewritten = rewriteInclude(t.text);
         if (rewritten !== t.text) replacements.push({ start: t.start, end: t.end, text: rewritten });
@@ -382,12 +466,29 @@ export function instrumentText(
     const top = braces[braces.length - 1];
     const inStatementContext = inFunction && top && top.kind !== 'init' && top.kind !== 'switch';
 
+    // A macro call: note where it ends and what it expands to.
+    const named = t.kind === 'ident' ? macros.get(t.text) : undefined;
+    const macro = named && (!named.params || sig[k + 1]?.text === '(') ? named : undefined;
+    if (macro) {
+      let end = k;
+      if (macro.params && sig[k + 1]?.text === '(') {
+        let depth = 0;
+        for (let j = k + 1; j < sig.length; j++) {
+          if (sig[j].text === '(') depth++;
+          else if (sig[j].text === ')' && --depth === 0) { end = j; break; }
+        }
+      }
+      if (!macro.params || end !== k) macroEnds.set(sig[end], { info: macro, start: t });
+    }
+
     // ---- statement start detection ----
     if (inStatementContext && parenDepth === 0) {
       const p = prev?.text;
-      const afterBoundary = p === ';' || p === '{' || p === '}';
+      const prevMacro = prev && macroEnds.get(prev)?.info;
+      const afterBoundary = p === ';' || p === '{' || p === '}' ||
+        (prevMacro !== undefined && (prevMacro.last === ';' || prevMacro.last === '{' || prevMacro.last === '}'));
       const excluded =
-        t.text === '}' || t.text === 'else' || t.text === 'case' || t.text === 'default' || t.text === ';' ||
+        [t.text, macro?.first].some((x) => x === '}' || x === 'else' || x === 'case' || x === 'default') || t.text === ';' ||
         (t.text === 'while' && p === '}' && lastClosedBraceKind === 'do');
       if (afterBoundary && !excluded) {
         if (t.line !== lastHitLine) {
@@ -396,7 +497,7 @@ export function instrumentText(
           lastHitLine = t.line;
         }
         // Declarations become visible to later statements.
-        if (t.kind === 'ident' && TYPE_NAMES.has(t.text) && sig[k + 1]?.kind === 'ident') {
+        if (t.kind === 'ident' && typeOf(t.text) && sig[k + 1]?.kind === 'ident') {
           const vars = parseDeclaration(k);
           if (ppDepth === functionPpDepth) top.vars.push(...vars);
         }
@@ -410,7 +511,7 @@ export function instrumentText(
         if (inFunction && prev?.text === 'for') {
           // for (Type name = ...; ...)
           const nxt = sig[k + 1];
-          if (nxt && nxt.kind === 'ident' && TYPE_NAMES.has(nxt.text) && sig[k + 2]?.kind === 'ident') {
+          if (nxt && nxt.kind === 'ident' && typeOf(nxt.text) && sig[k + 2]?.kind === 'ident') {
             const vars = parseDeclaration(k + 1);
             // 12dPL: for-init variables stay in scope after the for statement.
             if (ppDepth === functionPpDepth && top) top.vars.push(...vars);
@@ -491,8 +592,25 @@ export function instrumentText(
         break;
     }
 
+    // ---- braces opened or closed inside a macro's expansion ----
+    const ended = macroEnds.get(t);
+    if (ended) {
+      const { info, start } = ended;
+      for (let n = 0; n < info.braceDelta; n++) braces.push({ kind: inFunction ? 'block' : 'global', line: t.line, vars: [] });
+      for (let n = 0; n > info.braceDelta; n--) {
+        const b = braces.pop();
+        if (!b) {
+          ctx.warnings.push(`${ctx.sourcePath}:${t.line}: macro closes a '}' that has no matching '{'; instrumentation may be wrong.`);
+        } else if (b.kind === 'function') {
+          if (!info.hasReturn) ins.push({ at: start.start, text: 'dbg12d_leave(); ', order: 20 });
+          inFunction = false;
+          functionParams = [];
+        }
+      }
+    }
+
     // ---- global variable declarations ----
-    if (!inFunction && top?.kind === 'global' && braces.length === 1 && t.kind === 'ident' && TYPE_NAMES.has(t.text) &&
+    if (!inFunction && top?.kind === 'global' && braces.length === 1 && t.kind === 'ident' && typeOf(t.text) &&
         (prev?.text === '{' || prev?.text === ';') && sig[k + 1]?.kind === 'ident') {
       // Only track globals not hidden behind a conditional (apart from an include guard).
       if (ppDepth === globalPpDepth && globalPpDepth <= 1) ctx.globals.push(...parseDeclaration(k));
@@ -550,6 +668,7 @@ export function instrumentProgram(entry: string, outDir: string, opts: ProgramOp
   const warnings: string[] = [];
   const inspected = new Set((opts.inspectors ?? resolveInspectors()).keys());
   const usedTypes = new Set<string>();
+  const macros = new Map<string, MacroInfo>();
   const searchDirs = (opts.includePaths ?? []).map((d) => path.resolve(root, d));
 
   const key = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p);
@@ -585,7 +704,7 @@ export function instrumentProgram(entry: string, outDir: string, opts: ProgramOp
     byPath.set(key(src), info);
 
     const { text, encoding } = readSource(src);
-    const ctx: FileContext = { id: info.id, globals, warnings, sourcePath: src, inspected, usedTypes };
+    const ctx: FileContext = { id: info.id, globals, warnings, sourcePath: src, inspected, usedTypes, macros };
     const rewriteInclude = (directive: string): string => {
       const m = /^(#\s*include\s*)"([^"]+)"(.*)$/s.exec(directive);
       if (!m) return directive;
@@ -612,5 +731,13 @@ export function instrumentProgram(entry: string, outDir: string, opts: ProgramOp
   };
 
   visit(entry);
-  return { entryOutput: files[0].output, files, warnings, usedTypes };
+  const seen = new Set<string>();
+  const globalsDump: string[] = [];
+  for (const g of globals) {
+    if (seen.has(g.name)) continue;
+    seen.add(g.name);
+    const call = dumpCall(g, 'G', inspected, usedTypes);
+    if (call) globalsDump.push(call);
+  }
+  return { entryOutput: files[0].output, globalsDump, files, warnings, usedTypes };
 }

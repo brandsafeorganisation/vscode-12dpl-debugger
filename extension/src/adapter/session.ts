@@ -176,7 +176,7 @@ export class TwelveDDebugSession extends DebugSession {
       const inspectors = restrictInspectors(allInspectors, result.usedTypes);
       this.files = result.files;
       fs.writeFileSync(path.join(outDir, RUNTIME_FILE_NAME), generateRuntime({ sessionDir, inspectors, inspectDepth: args.inspectDepth }));
-      fs.writeFileSync(path.join(outDir, INSPECTORS_FILE_NAME), generateInspectors(inspectors));
+      fs.writeFileSync(path.join(outDir, INSPECTORS_FILE_NAME), generateInspectors(inspectors, result.globalsDump));
       for (const w of result.warnings) this.log('warning: ' + w, 'stderr');
 
       for (const [p, bps] of this.pendingBreakpoints) this.applyBreakpoints(p, bps);
@@ -402,11 +402,12 @@ export class TwelveDDebugSession extends DebugSession {
     const known = file?.variables[top.line];
     if (!known) return;
     const sent = new Map(m.variables.map((v) => [v.scope + ' ' + v.name, v]));
+    const knownNames = new Set(known.map((k) => k.scope + ' ' + k.name));
     m.variables = [
       ...known.map((k) =>
         sent.get(k.scope + ' ' + k.name) ?? { scope: k.scope, type: k.type + (k.isArray ? '[]' : ''), name: k.name, value: '' }),
-      // Members of inspected values.
-      ...m.variables.filter((v) => v.name.includes('.')),
+      // Members of inspected values (of variables visible here).
+      ...m.variables.filter((v) => v.name.includes('.') && knownNames.has(v.scope + ' ' + v.name.split('.')[0])),
     ];
   }
 
