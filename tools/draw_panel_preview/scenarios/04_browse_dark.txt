@@ -1,0 +1,18 @@
+# args: --theme=dark
+# vscode: ok
+# The file browser: into macros, pick my_macro.4dm, tick a box,
+# type arguments, Compile/Debug (VS Code answers)
+click 350 35
+move 200 100
+snap dark_browse
+click 200 100
+move 200 140
+snap dark_browse_macros
+click 200 140
+snap dark_picked
+click 30 62
+click 190 162
+type -dark seed=3
+click 70 349
+snap dark_debugging
+quit

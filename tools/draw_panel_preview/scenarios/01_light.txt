@@ -1,0 +1,2 @@
+# The panel as it opens, light theme (the default)
+snap light

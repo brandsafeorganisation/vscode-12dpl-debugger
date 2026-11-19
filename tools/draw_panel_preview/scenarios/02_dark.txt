@@ -1,0 +1,2 @@
+# args: -dark
+snap dark

@@ -1,0 +1,19 @@
+# A folder with more files than the popup shows: page with the
+# track, drag the thumb, pick a file further down
+click 200 35
+type macros/many/
+key esc
+click 350 35
+snap scroll_top
+click 357 280
+move 200 200
+snap scroll_paged
+down 357 120
+move 357 200
+move 357 300
+click 357 300
+move 200 240
+snap scroll_dragged
+click 200 240
+snap scroll_picked
+quit

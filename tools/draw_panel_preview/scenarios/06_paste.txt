@@ -1,0 +1,12 @@
+# A pasted Explorer "Copy as path" path (quotes and all), relative here;
+# browsing starts from its folder, Compile/Debug finds the file
+click 200 35
+clip "macros/lib/util.4dm"
+key paste
+snap pasted_quoted
+click 350 35
+snap browse_from_pasted
+key esc
+click 70 349
+snap pasted_compile
+quit

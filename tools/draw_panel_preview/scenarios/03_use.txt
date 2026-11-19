@@ -1,0 +1,22 @@
+# Hover, tick, type, browse, help, errors, resize (light theme)
+move 30 62
+snap hover_tick
+click 30 62
+click 70 349
+snap error_no_source
+click 200 35
+type C:\nowhere\x.4dm
+snap typing
+key ctrlbs
+key ctrlbs
+key bs
+snap after_backspace
+key esc
+click 70 349
+snap error_missing
+click 350 35
+move 120 100
+snap browse
+click 120 100
+snap browse_after_up_pick
+quit
