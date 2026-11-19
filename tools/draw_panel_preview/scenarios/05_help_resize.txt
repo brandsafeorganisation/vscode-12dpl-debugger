@@ -1,0 +1,10 @@
+# Help popup, the About event, and a wider panel
+click 300 349
+move 100 120
+snap help
+key esc
+about
+resize 520 420
+move 10 400
+snap resized
+quit

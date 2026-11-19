@@ -13,6 +13,12 @@ step over / in / out, pause, call stack, and variable values.
 5. Hit "Debug/Compile"
 
 
+### Experimental: themed panel
+
+`companions/draw_panel` has the same panel drawn in a Draw_Box, with a light
+and a dark theme (`-dark` on its command line). It reuses the original
+panel's code and is built by hand; see its README.
+
 ## How it works
 
 The macro is copied and rewritten with a bunch of calls to the VS Code extension.
