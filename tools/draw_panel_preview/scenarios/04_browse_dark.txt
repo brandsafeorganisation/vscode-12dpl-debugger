@@ -6,9 +6,9 @@ click 350 35
 move 200 100
 snap dark_browse
 click 200 100
-move 200 140
+move 200 160
 snap dark_browse_macros
-click 200 140
+click 200 160
 snap dark_picked
 click 30 62
 click 190 162

@@ -61,14 +61,15 @@
 #define DUI_POPUP_FRAME     0
 #define DUI_POPUP_CLOSE    -2
 #define DUI_POPUP_SCROLL   -3
+#define DUI_POPUP_TITLEBAR -4   // the title bar (not the cross): drag it to move the popup
 
 // ---------------------------------------------------------------- sizes, in pixels
-#define DUI_TEXT_SIZE      15.0
-#define DUI_CHAR_WIDTH     0.46   // about how wide a character is, per pixel of text size (12d can't measure text)
+#define DUI_TEXT_SIZE      13.0   // the default; a theme can set its own (dui_theme_font)
 #define DUI_TICK_SIZE      13.0
 #define DUI_POPUP_ROW      20.0
 #define DUI_POPUP_TITLE    22.0
 #define DUI_POPUP_ROWS     12     // most rows a popup shows at once
+#define DUI_POPUP_PIN_MOVE 4.0    // how far the title bar must be dragged before the popup stays open
 #define DUI_SCROLL_WIDTH   12.0
 #define DUI_FIELD_LONGEST  1024   // most characters a field takes
 
@@ -119,6 +120,12 @@
 #define DUI_ATTR_POP_TOP     ("popup_top")
 #define DUI_ATTR_POP_DRAG    ("popup_drag")
 #define DUI_ATTR_POP_PICKED  ("popup_picked")
+#define DUI_ATTR_POP_MOVING  ("popup_moving") // the title bar is held down
+#define DUI_ATTR_POP_GRAB_X  ("popup_grab_x") // where it was held, from the popup's x0 and top
+#define DUI_ATTR_POP_GRAB_Y  ("popup_grab_y")
+#define DUI_ATTR_POP_DOWN_X  ("popup_down_x") // where the mouse went down on the title bar
+#define DUI_ATTR_POP_DOWN_Y  ("popup_down_y")
+#define DUI_ATTR_POP_PINNED  ("popup_pinned") // it was moved, so a click outside doesn't close it
 
 // ---------------------------------------------------------------- draw_ui.4dm
 Integer dui_get_integer      (Attributes &p_record, Text p_field);
@@ -162,6 +169,9 @@ Integer dui_popup_scrolls    (Attributes &p_ui);
 void    dui_popup_set_scroll (Attributes &p_ui, Integer p_scroll);
 void    dui_popup_scroll_to  (Attributes &p_ui, Real p_y);
 Integer dui_popup_at         (Attributes &p_ui, Real p_x, Real p_y);
+Integer dui_popup_pinned     (Attributes &p_ui);
+Integer dui_popup_modal_at   (Attributes &p_ui, Real p_x, Real p_y);
+void    dui_popup_move_to    (Attributes &p_ui, Real p_x, Real p_y);
 Integer dui_hover_key        (Attributes &p_ui, Real p_x, Real p_y);
 Integer dui_mouse            (Attributes &p_ui, Text p_cmd, Text p_msg, Integer &p_id);
 Integer dui_split_xy         (Text p_msg, Real &p_x, Real &p_y);
@@ -179,9 +189,9 @@ void    dui_use_colour       (Draw_Box p_box, Attributes &p_theme, Text p_role);
 void    dui_fill             (Draw_Box p_box, Attributes &p_theme, Text p_role, Real p_x0, Real p_y0, Real p_x1, Real p_y1);
 void    dui_line             (Draw_Box p_box, Real p_x0, Real p_y0, Real p_x1, Real p_y1);
 void    dui_frame            (Draw_Box p_box, Attributes &p_theme, Text p_role, Real p_x0, Real p_y0, Real p_x1, Real p_y1);
-Real    dui_text_width       (Text p_text);
-Text    dui_fit_text         (Text p_text, Real p_width);
-Text    dui_fit_text_end     (Text p_text, Real p_width);
+Real    dui_text_width       (Attributes &p_theme, Text p_text);
+Text    dui_fit_text         (Attributes &p_theme, Text p_text, Real p_width);
+Text    dui_fit_text_end     (Attributes &p_theme, Text p_text, Real p_width);
 Text    dui_without_mnemonic (Text p_text);
 void    dui_draw_text        (Draw_Box p_box, Attributes &p_theme, Text p_role, Real p_x, Real p_middle, Integer p_centre, Text p_text);
 void    dui_draw_folder_icon (Draw_Box p_box, Attributes &p_theme, Real p_x, Real p_middle);

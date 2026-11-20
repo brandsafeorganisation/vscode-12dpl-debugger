@@ -11,6 +11,16 @@
 #define DDP_VIEW_HEIGHT       374
 #define DDP_SOURCE_PATTERN    ("*.4dm")
 
+// ---------------------------------------------------------------- command line (besides the theme and font)
+#define DDP_ARG_FILL          ("fill")    // no gaps round the drawing inside its vertical group
+#define DDP_ARG_GROW          ("grow=")   // grow=<pixels>: make the drawing that much wider and taller once shown
+#define DDP_ARG_KEYS          ("keys")    // show the Keys box (it is hidden otherwise)
+
+// ---------------------------------------------------------------- what Help shows about the panel's size
+#define DDP_ATTR_SIZE_PANEL   ("ddp_size_panel")
+#define DDP_ATTR_SIZE_BOX     ("ddp_size_box")
+#define DDP_ATTR_SIZE_THEME   ("ddp_size_theme")
+
 // ---------------------------------------------------------------- widget ids
 #define DDP_W_COMPILE_GROUP       1
 #define DDP_W_SOURCE_LABEL        2
@@ -45,11 +55,12 @@
 
 // ---------------------------------------------------------------- debug_draw_panel.4dm
 void    ddp_defaults       (Attributes &p_ui);
-void    ddp_layout         (Attributes &p_ui, Real p_w, Real p_h);
+void    ddp_layout         (Attributes &p_ui, Attributes &p_theme, Real p_w, Real p_h);
 void    ddp_frame          (Draw_Box p_box, Attributes &p_ui, Attributes &p_theme);
-void    ddp_help_open      (Attributes &p_ui);
+void    ddp_help_open      (Attributes &p_ui, Attributes &p_theme);
 void    ddp_browse_open    (Attributes &p_ui);
 Integer ddp_compile_debug  (Panel p_panel, Draw_Box p_box, Message_Box p_message, Attributes &p_ui, Attributes &p_theme, Text &p_last_session_dir);
-Integer show_draw_panel    (Integer p_theme_kind);
+void    ddp_measure        (Panel p_panel, Draw_Box p_box, Attributes &p_ui);
+Integer show_draw_panel    (Attributes &p_theme, Integer p_fill, Integer p_grow, Integer p_show_keys);
 
 #endif

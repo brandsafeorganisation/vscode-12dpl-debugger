@@ -318,6 +318,8 @@ void dui_popup_open(Attributes &p_ui, Integer p_owner, Text p_title, Real p_x0, 
   Set_attribute(p_ui, DUI_ATTR_POP_X1   , p_x1);
   Set_attribute(p_ui, DUI_ATTR_POP_TOP  , p_top);
   Set_attribute(p_ui, DUI_ATTR_POP_DRAG , FALSE);
+  Set_attribute(p_ui, DUI_ATTR_POP_MOVING, FALSE);
+  Set_attribute(p_ui, DUI_ATTR_POP_PINNED, FALSE);
   Set_attribute(p_ui, DUI_ATTR_POP_PICKED, "");
   dui_popup_set_title (p_ui, p_title);
   dui_popup_clear_rows(p_ui);
@@ -371,8 +373,10 @@ Integer dui_popup_shown(Attributes &p_ui)
 void dui_popup_close(Attributes &p_ui)
 // ----------------------------------------------------------------
 {
-  Set_attribute(p_ui, DUI_ATTR_POP_OWNER, 0);
-  Set_attribute(p_ui, DUI_ATTR_POP_DRAG , FALSE);
+  Set_attribute(p_ui, DUI_ATTR_POP_OWNER , 0);
+  Set_attribute(p_ui, DUI_ATTR_POP_DRAG  , FALSE);
+  Set_attribute(p_ui, DUI_ATTR_POP_MOVING, FALSE);
+  Set_attribute(p_ui, DUI_ATTR_POP_PINNED, FALSE);
 }
 
 Text dui_popup_picked(Attributes &p_ui)
@@ -385,7 +389,8 @@ Text dui_popup_picked(Attributes &p_ui)
 
 void dui_popup_rect(Attributes &p_ui, Real &p_x0, Real &p_y0, Real &p_x1, Real &p_y1)
 // ----------------------------------------------------------------
-// Where the popup is: as opened, moved to stay inside the box
+// Where the popup is: as opened (or dragged to), moved to stay
+// inside the box
 // ----------------------------------------------------------------
 {
   Real l_w      = dui_width(p_ui);
@@ -451,8 +456,9 @@ void dui_popup_scroll_to(Attributes &p_ui, Real p_y)
 Integer dui_popup_at(Attributes &p_ui, Real p_x, Real p_y)
 // ----------------------------------------------------------------
 // What of the popup is at (x, y): a row number (1 up), or
-// DUI_POPUP_OUTSIDE, DUI_POPUP_CLOSE (the cross), DUI_POPUP_SCROLL
-// (the scroll bar) or DUI_POPUP_FRAME (anything else)
+// DUI_POPUP_OUTSIDE, DUI_POPUP_CLOSE (the cross), DUI_POPUP_TITLEBAR
+// (the rest of the title bar), DUI_POPUP_SCROLL (the scroll bar) or
+// DUI_POPUP_FRAME (anything else)
 // ----------------------------------------------------------------
 {
   Real    l_x0 = 0.0, l_y0 = 0.0, l_x1 = 0.0, l_y1 = 0.0;
@@ -466,7 +472,7 @@ Integer dui_popup_at(Attributes &p_ui, Real p_x, Real p_y)
   l_rows_top = l_y1 - DUI_POPUP_TITLE;
   if (p_y > l_rows_top) {
     if (p_x > l_x1 - DUI_POPUP_TITLE) return DUI_POPUP_CLOSE;
-    return DUI_POPUP_FRAME;
+    return DUI_POPUP_TITLEBAR;
   }
   if (dui_popup_scrolls(p_ui)) {
     if (p_x > l_x1 - 1.0 - DUI_SCROLL_WIDTH) return DUI_POPUP_SCROLL;
@@ -480,6 +486,58 @@ Integer dui_popup_at(Attributes &p_ui, Real p_x, Real p_y)
   return l_row;
 }
 
+Integer dui_popup_pinned(Attributes &p_ui)
+// ----------------------------------------------------------------
+// TRUE once the popup has been dragged by its title bar: it then
+// stays open when something else is clicked (else a click outside
+// it closes it, like a choice box's list)
+// ----------------------------------------------------------------
+{
+  if (dui_popup_owner(p_ui) == 0) return FALSE;
+  return dui_get_integer(p_ui, DUI_ATTR_POP_PINNED);
+}
+
+Integer dui_popup_modal_at(Attributes &p_ui, Real p_x, Real p_y)
+// ----------------------------------------------------------------
+// TRUE if the popup keeps the mouse at (x, y) from the widgets: it
+// is over them, it isn't pinned (a click anywhere goes to it), or
+// it is being dragged
+// ----------------------------------------------------------------
+{
+  if (dui_popup_owner(p_ui) == 0) return FALSE;
+  if (!dui_popup_pinned(p_ui)) return TRUE;
+  if (dui_get_integer(p_ui, DUI_ATTR_POP_MOVING)) return TRUE;
+  if (dui_popup_at(p_ui, p_x, p_y) != DUI_POPUP_OUTSIDE) return TRUE;
+  return FALSE;
+}
+
+void dui_popup_move_to(Attributes &p_ui, Real p_x, Real p_y)
+// ----------------------------------------------------------------
+// Drag the popup: the point of its title bar that was grabbed goes
+// to (x, y), as far as the box lets it. Once it has moved a few
+// pixels it is pinned.
+// ----------------------------------------------------------------
+{
+  Real l_x0 = 0.0, l_y0 = 0.0, l_x1 = 0.0, l_y1 = 0.0;
+  Real l_width = dui_get_real(p_ui, DUI_ATTR_POP_X1) - dui_get_real(p_ui, DUI_ATTR_POP_X0);
+  Real l_left  = p_x - dui_get_real(p_ui, DUI_ATTR_POP_GRAB_X);
+  Real l_dx    = p_x - dui_get_real(p_ui, DUI_ATTR_POP_DOWN_X);
+  Real l_dy    = p_y - dui_get_real(p_ui, DUI_ATTR_POP_DOWN_Y);
+
+  if (l_dx * l_dx + l_dy * l_dy >= DUI_POPUP_PIN_MOVE * DUI_POPUP_PIN_MOVE) Set_attribute(p_ui, DUI_ATTR_POP_PINNED, TRUE);
+
+  Set_attribute(p_ui, DUI_ATTR_POP_X0 , l_left);
+  Set_attribute(p_ui, DUI_ATTR_POP_X1 , l_left + l_width);
+  Set_attribute(p_ui, DUI_ATTR_POP_TOP, p_y + dui_get_real(p_ui, DUI_ATTR_POP_GRAB_Y));
+
+  // keep where it is drawn (inside the box), so it doesn't lag behind
+  // the mouse when the mouse comes back from past the edge
+  dui_popup_rect(p_ui, l_x0, l_y0, l_x1, l_y1);
+  Set_attribute(p_ui, DUI_ATTR_POP_X0 , l_x0);
+  Set_attribute(p_ui, DUI_ATTR_POP_X1 , l_x1);
+  Set_attribute(p_ui, DUI_ATTR_POP_TOP, l_y1);
+}
+
 // ---------------------------------------------------------------- mouse
 
 Integer dui_hover_key(Attributes &p_ui, Real p_x, Real p_y)
@@ -488,7 +546,7 @@ Integer dui_hover_key(Attributes &p_ui, Real p_x, Real p_y)
 // open, else the widget. Only used to see when it changes.
 // ----------------------------------------------------------------
 {
-  if (dui_popup_owner(p_ui) != 0) return 100000 + dui_popup_at(p_ui, p_x, p_y);
+  if (dui_popup_modal_at(p_ui, p_x, p_y)) return 100000 + dui_popup_at(p_ui, p_x, p_y);
   return dui_at(p_ui, p_x, p_y);
 }
 
@@ -543,6 +601,10 @@ Integer dui_mouse(Attributes &p_ui, Text p_cmd, Text p_msg, Integer &p_id)
 
   // ------------------------------------------------ moving
   if (p_cmd == "mouse_move") {
+    if (dui_get_integer(p_ui, DUI_ATTR_POP_MOVING)) {
+      dui_popup_move_to(p_ui, l_x, l_y);
+      return DUI_ACT_REDRAW;
+    }
     if (dui_get_integer(p_ui, DUI_ATTR_POP_DRAG)) {
       dui_popup_scroll_to(p_ui, l_y);
       return DUI_ACT_REDRAW;
@@ -553,10 +615,20 @@ Integer dui_mouse(Attributes &p_ui, Text p_cmd, Text p_msg, Integer &p_id)
 
   // ------------------------------------------------ the button goes down
   if (p_cmd == "click_lb_down") {
-    if (dui_popup_owner(p_ui) != 0) {
-      if (dui_popup_at(p_ui, l_x, l_y) == DUI_POPUP_SCROLL) {
+    if (dui_popup_modal_at(p_ui, l_x, l_y)) {
+      l_part = dui_popup_at(p_ui, l_x, l_y);
+      if (l_part == DUI_POPUP_SCROLL) {
         Set_attribute(p_ui, DUI_ATTR_POP_DRAG, TRUE);
         dui_popup_scroll_to(p_ui, l_y);
+      }
+      if (l_part == DUI_POPUP_TITLEBAR) {
+        // hold the title bar to drag the popup
+        dui_popup_rect(p_ui, l_x0, l_y0, l_x1, l_y1);
+        Set_attribute(p_ui, DUI_ATTR_POP_MOVING, TRUE);
+        Set_attribute(p_ui, DUI_ATTR_POP_GRAB_X, l_x - l_x0);
+        Set_attribute(p_ui, DUI_ATTR_POP_GRAB_Y, l_y1 - l_y);
+        Set_attribute(p_ui, DUI_ATTR_POP_DOWN_X, l_x);
+        Set_attribute(p_ui, DUI_ATTR_POP_DOWN_Y, l_y);
       }
       return DUI_ACT_REDRAW;
     }
@@ -571,7 +643,11 @@ Integer dui_mouse(Attributes &p_ui, Text p_cmd, Text p_msg, Integer &p_id)
   }
   Set_attribute(p_ui, DUI_ATTR_PRESSED, 0);
 
-  if (dui_popup_owner(p_ui) != 0) {
+  if (dui_get_integer(p_ui, DUI_ATTR_POP_MOVING)) {
+    Set_attribute(p_ui, DUI_ATTR_POP_MOVING, FALSE);
+    return DUI_ACT_REDRAW;
+  }
+  if (dui_popup_modal_at(p_ui, l_x, l_y)) {
     if (dui_get_integer(p_ui, DUI_ATTR_POP_DRAG)) {
       Set_attribute(p_ui, DUI_ATTR_POP_DRAG, FALSE);
       return DUI_ACT_REDRAW;
@@ -584,6 +660,8 @@ Integer dui_mouse(Attributes &p_ui, Text p_cmd, Text p_msg, Integer &p_id)
       p_id = dui_popup_owner(p_ui);
       return DUI_ACT_PICK;
     }
+    // a click outside closes it (unless it was dragged: then it is
+    // pinned, and the click goes to the widgets below)
     if (l_part == DUI_POPUP_OUTSIDE || l_part == DUI_POPUP_CLOSE) {
       dui_popup_close(p_ui);
       Set_attribute(p_ui, DUI_ATTR_HOVER, dui_at(p_ui, l_x, l_y));
@@ -703,6 +781,11 @@ Integer dui_keystroke(Attributes &p_ui, Text p_msg, Integer &p_id)
   p_id = 0;
 
   if (l_code == DUI_KEY_ESCAPE) {
+    // beside a pinned popup, a field is left before the popup closes
+    if (l_focus != 0 && dui_popup_pinned(p_ui)) {
+      dui_set_focus(p_ui, 0);
+      return DUI_ACT_REDRAW;
+    }
     if (dui_popup_owner(p_ui) != 0) {
       dui_popup_close(p_ui);
       return DUI_ACT_REDRAW;
@@ -713,7 +796,8 @@ Integer dui_keystroke(Attributes &p_ui, Text p_msg, Integer &p_id)
     }
     return DUI_ACT_NONE;
   }
-  if (dui_popup_owner(p_ui) != 0) return DUI_ACT_NONE;
+  // an open popup takes the keys from the fields, unless it is pinned
+  if (dui_popup_owner(p_ui) != 0 && !dui_popup_pinned(p_ui)) return DUI_ACT_NONE;
 
   if (l_code == DUI_KEY_ENTER) {
     p_id = l_focus;

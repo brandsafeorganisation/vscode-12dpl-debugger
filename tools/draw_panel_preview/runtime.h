@@ -48,6 +48,14 @@ inline Integer Set_width_in_chars(Widget, Integer) { return 0; }
 inline Integer Use_browse_button(Widget, Integer) { return 0; }
 inline Integer Set_sizing_constraints(Widget, Integer, Integer) { return 0; }
 inline Integer Set_notify_resizing(Widget) { return 0; }
+inline Integer Set_border(Widget, Integer, Integer) { return 0; }
+inline Integer Set_gap(Widget, Integer) { return 0; }
+Integer Set_collapsed(Widget w, Integer mode);
+Integer Set_visible(Widget w, Integer mode);
+Integer Set_size(Widget w, Integer x, Integer y);
+Integer Get_widget_size(Widget w, Integer &x, Integer &y);
+Integer Get_widget_position(Widget w, Integer &x, Integer &y);
+Integer Get_active_theme_name(Text &name);
 inline Integer Set_exit_code(Text) { return 0; }
 Integer Set_data(Widget &w, Text t);
 Integer Get_data(Widget &w, Text &t);
@@ -66,7 +74,7 @@ Integer Move_to(Draw_Box, Real x, Real y);
 Integer Draw_to(Draw_Box, Real x, Real y);
 Integer Set_text_align(Draw_Box, Integer mode);
 Integer Set_text_colour(Draw_Box, Integer r, Integer g, Integer b);
-inline Integer Set_text_font(Draw_Box, Text) { return 0; }
+Integer Set_text_font(Draw_Box, Text font);
 inline Integer Set_bk_mode(Draw_Box, Integer) { return 0; }
 Integer Draw_text(Draw_Box, Real x, Real y, Real size, Real angle, Text t);
 
@@ -106,6 +114,7 @@ inline Integer Find_text(const Text &t, const Text &f) { size_t p = t.find(f); r
 inline Integer Get_char(const Text &t, Integer i, Integer &c) { if (i < 1 || i > (Integer)t.size()) return 1; c = (unsigned char)t[i - 1]; return 0; }
 inline Text To_text(Integer i) { return std::to_string(i); }
 inline Integer From_text(const Text &t, Real &r) { r = atof(t.c_str()); return 0; }
+inline Integer From_text(const Text &t, Integer &i) { i = atoi(t.c_str()); return 0; }
 inline Text Text_lower(Text t) { for (auto &c : t) c = (char)tolower((unsigned char)c); return t; }
 inline Text Text_justify(const Text &t) {
   size_t a = t.find_first_not_of(' '), b = t.find_last_not_of(' ');

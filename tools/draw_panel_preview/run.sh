@@ -27,6 +27,7 @@ for s in "${SCENARIOS[@]}"; do
   ARGS=$(sed -n 's/^# args: //p' "$s" | head -1)
   echo "== $(basename "$s") $ARGS"
   (cd "$HERE/run" && PREVIEW_OUT="$HERE/out" PREVIEW_VSCODE=$(sed -n 's/^# vscode: //p' "$s" | head -1) \
+     PREVIEW_12D_THEME=$(sed -n 's/^# 12d theme: //p' "$s" | head -1) \
      "$HERE/build/panel" "$s" $ARGS)
 done
 python3 "$HERE/topng.py" "$HERE/out"
