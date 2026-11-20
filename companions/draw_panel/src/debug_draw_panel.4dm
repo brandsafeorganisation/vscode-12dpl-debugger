@@ -15,7 +15,8 @@
 //
 // The panel holds the Draw_Box and a small "Keys" input box, which
 // keeps the keyboard (a Draw_Box gets no key presses): typing there
-// goes to the field that was clicked.
+// goes to the field that was clicked. The Keys box is collapsed and
+// hidden unless the command line has -keys.
 // ----------------------------------------------------------------
 
 void ddp_defaults(Attributes &p_ui)
@@ -36,11 +37,12 @@ void ddp_defaults(Attributes &p_ui)
   dui_set_message(p_ui, DDP_W_MESSAGE         , "", FALSE);
 }
 
-void ddp_layout(Attributes &p_ui, Real p_w, Real p_h)
+void ddp_layout(Attributes &p_ui, Attributes &p_theme, Real p_w, Real p_h)
 // ----------------------------------------------------------------
 // Lay the panel out for a w x h box, top down, in the order of the
 // original panel. A group is added after what is in it (it only
-// draws a frame round it).
+// draws a frame round it). The label and the buttons are as wide as
+// the theme's font needs.
 // ----------------------------------------------------------------
 {
   Real l_left   = 6.0;              // group frames
@@ -50,17 +52,22 @@ void ddp_layout(Attributes &p_ui, Real p_w, Real p_h)
   Real l_mid    = p_w / 2.0;
   Real l_t      = 4.0;              // how far down the next row starts
   Real l_group  = 0.0;
-  Real l_button = 104.0;            // button width
+  Real l_button = 104.0;            // button width, at least
   Real l_gap    = 10.0;
   Real l_bx     = 0.0;
+  Real l_label  = dui_text_width(p_theme, "Macro source") + 6.0;
+  Real l_widest = dui_text_width(p_theme, "Compile/Debug") + 12.0;
+
+  if (l_widest > l_button) l_button = l_widest;
+  if (3.0 * l_button + 2.0 * l_gap > p_w - 12.0) l_button = (p_w - 12.0 - 2.0 * l_gap) / 3.0;
 
   dui_begin(p_ui, p_w, p_h);
 
   // ------------------------------------------------ Compile Options
   l_group = l_t;
   l_t = l_t + 20.0;
-  dui_add_down(p_ui, DUI_LABEL , DDP_W_SOURCE_LABEL , l_in0        , l_t, l_in0 + 88.0, l_t + 22.0, "Macro source", TRUE);
-  dui_add_down(p_ui, DUI_FIELD , DDP_W_MACRO_SOURCE , l_in0 + 90.0 , l_t, l_in1 - 28.0, l_t + 22.0, ""            , TRUE);
+  dui_add_down(p_ui, DUI_LABEL , DDP_W_SOURCE_LABEL , l_in0          , l_t, l_in0 + l_label, l_t + 22.0, "Macro source", TRUE);
+  dui_add_down(p_ui, DUI_FIELD , DDP_W_MACRO_SOURCE , l_in0 + l_label, l_t, l_in1 - 28.0   , l_t + 22.0, ""            , TRUE);
   dui_add_down(p_ui, DUI_BROWSE, DDP_W_BROWSE_SOURCE, l_in1 - 24.0 , l_t, l_in1       , l_t + 22.0, ""            , TRUE);
   l_t = l_t + 27.0;
   dui_add_down(p_ui, DUI_TICK, DDP_W_ALLOW_OLD_STRING, l_in0, l_t, l_in1, l_t + 22.0, "Allow old string calls", TRUE);
@@ -123,12 +130,12 @@ void ddp_frame(Draw_Box p_box, Attributes &p_ui, Attributes &p_theme)
 
   Get_size(p_box, l_width, l_height);
   Start_batch_draw(p_box);
-  ddp_layout(p_ui, l_width, l_height);
+  ddp_layout(p_ui, p_theme, l_width, l_height);
   dui_draw  (p_box, p_ui, p_theme);
   End_batch_draw(p_box);
 }
 
-void ddp_help_open(Attributes &p_ui)
+void ddp_help_open(Attributes &p_ui, Attributes &p_theme)
 // ----------------------------------------------------------------
 // Help, in the popup over the options
 // ----------------------------------------------------------------
@@ -143,10 +150,39 @@ void ddp_help_open(Attributes &p_ui)
   dui_popup_add (p_ui, ""                                            , "", DUI_ICON_NONE);
   dui_popup_add (p_ui, "Macro source: the .4dm with main."           , "", DUI_ICON_NONE);
   dui_popup_add (p_ui, "The folder button browses for it."           , "", DUI_ICON_NONE);
+  dui_popup_add (p_ui, "Drag its title bar and the list stays open." , "", DUI_ICON_NONE);
   dui_popup_add (p_ui, "Click a field to type; Tab, Esc, Ctrl+V."    , "", DUI_ICON_NONE);
   dui_popup_add (p_ui, ""                                            , "", DUI_ICON_NONE);
-  dui_popup_add (p_ui, "Run this macro with -dark or -light"         , "", DUI_ICON_NONE);
-  dui_popup_add (p_ui, "to pick its colours."                        , "", DUI_ICON_NONE);
+  dui_popup_add (p_ui, "Command line: -dark, -light or -auto;"       , "", DUI_ICON_NONE);
+  dui_popup_add (p_ui, "-modern (Inter) or font=<name>;"             , "", DUI_ICON_NONE);
+  dui_popup_add (p_ui, "-fill, grow=<pixels>, -keys."                , "", DUI_ICON_NONE);
+  dui_popup_add (p_ui, ""                                            , "", DUI_ICON_NONE);
+  dui_popup_add (p_ui, "Font: " + dui_theme_font_name(p_theme)       , "", DUI_ICON_NONE);
+  dui_popup_add (p_ui, dui_get_text(p_ui, DDP_ATTR_SIZE_THEME)        , "", DUI_ICON_NONE);
+  dui_popup_add (p_ui, dui_get_text(p_ui, DDP_ATTR_SIZE_PANEL)        , "", DUI_ICON_NONE);
+  dui_popup_add (p_ui, dui_get_text(p_ui, DDP_ATTR_SIZE_BOX)          , "", DUI_ICON_NONE);
+}
+
+void ddp_measure(Panel p_panel, Draw_Box p_box, Attributes &p_ui)
+// ----------------------------------------------------------------
+// Note where 12d put the panel and the drawing, and 12d's theme, for
+// Help (to see how much of the panel the drawing covers)
+// ----------------------------------------------------------------
+{
+  Integer l_w = 0, l_h = 0, l_x = 0, l_y = 0;
+  Text    l_theme = "";
+
+  Get_active_theme_name(l_theme);
+  Set_attribute(p_ui, DDP_ATTR_SIZE_THEME, "12d theme: " + l_theme);
+
+  Get_widget_size    (p_panel, l_w, l_h);
+  Get_widget_position(p_panel, l_x, l_y);
+  Set_attribute(p_ui, DDP_ATTR_SIZE_PANEL, "Panel " + To_text(l_w) + " x " + To_text(l_h) + " at " + To_text(l_x) + ", " + To_text(l_y));
+
+  l_w = 0; l_h = 0; l_x = 0; l_y = 0;
+  Get_widget_size    (p_box, l_w, l_h);
+  Get_widget_position(p_box, l_x, l_y);
+  Set_attribute(p_ui, DDP_ATTR_SIZE_BOX, "Drawing " + To_text(l_w) + " x " + To_text(l_h) + " at " + To_text(l_x) + ", " + To_text(l_y));
 }
 
 void ddp_browse_open(Attributes &p_ui)
@@ -229,10 +265,19 @@ Integer ddp_compile_debug(Panel p_panel, Draw_Box p_box, Message_Box p_message, 
   return SUCCESS;
 }
 
-Integer show_draw_panel(Integer p_theme_kind)
+Integer show_draw_panel(Attributes &p_theme, Integer p_fill, Integer p_grow, Integer p_show_keys)
 // ----------------------------------------------------------------
-// Show the panel in a theme (DUI_THEME_*) until Finish or the panel
-// is closed. Returns Shutdown_code if 12d is shutting down, else 0.
+// Show the panel in a theme (dui_theme_set) until Finish or the
+// panel is closed. Returns Shutdown_code if 12d is shutting down,
+// else 0.
+//
+// Trying to cover the panel with the drawing (12d leaves a margin
+// round it in the panel's own colour):
+//   p_fill       no border gap or gap in the drawing's vertical group
+//   p_grow       pixels to make the drawing wider and taller once
+//                the panel is shown (Set_size), 0 for none
+//   p_show_keys  show the Keys box (else it is collapsed and hidden;
+//                it still takes the keyboard)
 // ----------------------------------------------------------------
 {
   Panel          l_panel   = Create_panel         (DDP_TITLE, 1, 1, 1);
@@ -242,8 +287,10 @@ Integer show_draw_panel(Integer p_theme_kind)
   Input_Box      l_keys    = Create_input_box     (DDP_KEYS_TITLE, l_message);
 
   Attributes   l_ui;
-  Attributes   l_theme;
   Dynamic_Text l_about_text;
+
+  Integer   l_box_w      = 0;
+  Integer   l_box_h      = 0;
 
   Integer   l_doit       = TRUE;
   Integer   l_want_frame = TRUE;
@@ -258,7 +305,6 @@ Integer show_draw_panel(Integer p_theme_kind)
   // macro.lock exists that build is still running.
   Text l_last_session_dir = "";
 
-  dui_theme_set(l_theme, p_theme_kind);
   dui_clear    (l_ui);
   ddp_defaults (l_ui);
 
@@ -273,13 +319,24 @@ Integer show_draw_panel(Integer p_theme_kind)
   Set_sizing_constraints(l_box   , 2, 2);   // the drawing fills the panel when it is resized
   Set_sizing_constraints(l_vgroup, 2, 2);
   Set_notify_resizing   (l_panel);
+  if (p_fill) {
+    Set_border(l_vgroup, 0, 0);
+    Set_gap   (l_vgroup, 0);
+  }
+  if (!p_show_keys) Set_collapsed(l_keys, 1);   // takes no room on the panel
 
   Show_widget(l_panel);
+  if (!p_show_keys) Set_visible(l_keys, 0);     // in case collapsing didn't hide it
+  if (p_grow > 0) {
+    Get_widget_size(l_box, l_box_w, l_box_h);
+    Set_size       (l_box, l_box_w + p_grow, l_box_h + p_grow);
+  }
+  ddp_measure(l_panel, l_box, l_ui);
   Set_focus  (l_keys);
 
   while (l_doit) {
     if (l_want_frame) {
-      ddp_frame(l_box, l_ui, l_theme);
+      ddp_frame(l_box, l_ui, p_theme);
       l_want_frame = FALSE;
     }
 
@@ -352,16 +409,26 @@ Integer show_draw_panel(Integer p_theme_kind)
         l_want_frame = TRUE;
         switch (l_widget) {
           case DDP_W_BROWSE_SOURCE : {
-            ddp_browse_open(l_ui);
+            // the folder button opens the file list, or closes it if it is open
+            if (dui_popup_owner(l_ui) == DDP_W_BROWSE_SOURCE) {
+              dui_popup_close(l_ui);
+            } else {
+              ddp_browse_open(l_ui);
+            }
           } break;
           case DDP_W_COMPILE_DEBUG : {
-            ddp_compile_debug(l_panel, l_box, l_message, l_ui, l_theme, l_last_session_dir);
+            ddp_compile_debug(l_panel, l_box, l_message, l_ui, p_theme, l_last_session_dir);
           } break;
           case DDP_W_FINISH : {
             l_doit = FALSE;
           } break;
           case DDP_W_HELP : {
-            ddp_help_open(l_ui);
+            if (dui_popup_owner(l_ui) == DDP_W_HELP) {
+              dui_popup_close(l_ui);
+            } else {
+              ddp_measure  (l_panel, l_box, l_ui);
+              ddp_help_open(l_ui, p_theme);
+            }
           } break;
         }
       } break;

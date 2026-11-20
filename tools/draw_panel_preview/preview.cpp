@@ -18,6 +18,26 @@ Widget preview_new_widget(const Text &kind, const Text &title, int, int) {
 Draw_Box Create_draw_box(Integer w, Integer h, Integer) {
   Widget b = preview_new_widget("box", ""); g_box_id = b.id; g_w = w; g_h = h; return b;
 }
+// The panel as 12d lays it out, roughly: a margin round the drawing
+// and, unless collapsed, the Keys row under it. Sizes are screen pixels
+// at 100% (the preview has no scaling).
+static bool g_keys_collapsed = false, g_keys_visible = true;
+static const int PANEL_X = 100, PANEL_Y = 100, PANEL_TITLE = 31, PANEL_MARGIN = 7, KEYS_ROW = 26;
+Integer Set_collapsed(Widget w, Integer mode) { if (w.id == g_keys_id) g_keys_collapsed = mode != 0; return 0; }
+Integer Set_visible(Widget w, Integer mode) { if (w.id == g_keys_id) g_keys_visible = mode != 0; return 0; }
+Integer Set_size(Widget w, Integer x, Integer y) { if (w.id == g_box_id) { g_w = x; g_h = y; printf("[Set_size] drawing %d x %d\n", x, y); } return 0; }
+Integer Get_widget_size(Widget w, Integer &x, Integer &y) {
+  if (w.id == g_box_id) { x = g_w; y = g_h; return 0; }
+  if (w.id == g_panel_id) { x = g_w + 2 * PANEL_MARGIN; y = PANEL_TITLE + g_h + 2 * PANEL_MARGIN + (g_keys_collapsed ? 0 : KEYS_ROW); return 0; }
+  return 1;
+}
+Integer Get_widget_position(Widget w, Integer &x, Integer &y) {
+  if (w.id == g_box_id) { x = PANEL_X + PANEL_MARGIN; y = PANEL_Y + PANEL_TITLE + PANEL_MARGIN; return 0; }
+  if (w.id == g_panel_id) { x = PANEL_X; y = PANEL_Y; return 0; }
+  return 1;
+}
+Integer Get_active_theme_name(Text &name) { name = Getenv("PREVIEW_12D_THEME"); if (name.empty()) name = "Light"; return 0; }
+
 // widgets are handles in 12d: copies share their data
 Integer Set_data(Widget &w, Text t) { g_widget_data[w.id] = t; return 0; }
 Integer Get_data(Widget &w, Text &t) { t = g_widget_data[w.id]; return 0; }
@@ -54,6 +74,7 @@ Integer Draw_to(Draw_Box, Real x, Real y) {
   g_ops.push_back("line " + rgb(g_pen) + " " + num(g_pen_x) + " " + num(g_pen_y) + " " + num(x) + " " + num(y));
   g_pen_x = x; g_pen_y = y; return 0;
 }
+Integer Set_text_font(Draw_Box, Text font) { if (need_batch()) return 1; g_ops.push_back("font 0 0 0\t" + font); return 0; }
 Integer Set_text_align(Draw_Box, Integer m) { ++g_draw_calls; g_align = m; return 0; }
 Integer Set_text_colour(Draw_Box, Integer r, Integer g, Integer b) { ++g_draw_calls; g_text_colour = Rgb{r, g, b}; return 0; }
 Integer Draw_text(Draw_Box, Real x, Real y, Real size, Real, Text t) {

@@ -8,6 +8,7 @@
 // dui_theme_set(); add a role by giving it a colour in every theme.
 // ----------------------------------------------------------------
 
+#define DUI_THEME_AUTO   0     // follow 12d's theme (Get_active_theme_name)
 #define DUI_THEME_LIGHT  1
 #define DUI_THEME_DARK   2
 
@@ -19,6 +20,24 @@
 #define DUI_ARG_LIGHT        ("light")
 #define DUI_ARG_THEME_DARK   ("theme=dark")
 #define DUI_ARG_THEME_LIGHT  ("theme=light")
+#define DUI_ARG_AUTO         ("auto")
+#define DUI_ARG_THEME_AUTO   ("theme=auto")
+#define DUI_ARG_MODERN       ("modern")       // the modern font (DUI_FONT_MODERN)
+#define DUI_ARG_FONT         ("font=")        // font=<any installed font>
+
+// ---------------------------------------------------------------- fonts
+// 12d can't measure text, so each font has an estimate of how wide
+// a character is, per pixel of text size (a little over the average,
+// so text is cut short rather than drawn past its box).
+#define DUI_ATTR_FONT          ("font")
+#define DUI_ATTR_FONT_SIZE     ("font_size")
+#define DUI_ATTR_CHAR_WIDTH    ("char_width")
+
+#define DUI_FONT_DEFAULT       ("Segoe UI")   // 12d's own panels
+#define DUI_FONT_DEFAULT_WIDTH 0.55
+#define DUI_FONT_MODERN        ("Inter")      // free: https://rsms.me/inter
+#define DUI_FONT_MODERN_WIDTH  0.59
+#define DUI_FONT_OTHER_WIDTH   0.60           // a font given by name
 
 // ---------------------------------------------------------------- colour roles
 #define DUI_C_BACKGROUND      ("background")      // the panel
@@ -53,6 +72,15 @@ Integer dui_theme_blue         (Attributes &p_theme, Text p_role);
 Integer dui_theme_kind         (Attributes &p_theme);
 void    dui_theme_set          (Attributes &p_theme, Integer p_kind);
 Integer dui_theme_from_word    (Text p_word, Integer p_default);
+Integer dui_theme_from_12d     (Integer p_default);
 Integer dui_theme_from_arguments(Integer p_default);
+void    dui_theme_font         (Attributes &p_theme, Text p_font, Real p_char_width, Real p_size);
+void    dui_theme_font_from_arguments(Attributes &p_theme);
+Text    dui_theme_font_name    (Attributes &p_theme);
+Real    dui_theme_font_size    (Attributes &p_theme);
+Real    dui_theme_char_width   (Attributes &p_theme);
+Text    dui_argument_strip     (Text p_word);
+Integer dui_has_argument       (Text p_word);
+Integer dui_argument_value     (Text p_prefix, Text &p_value);
 
 #endif

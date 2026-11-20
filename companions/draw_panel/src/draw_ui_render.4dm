@@ -20,7 +20,6 @@
 
 #define DUI_ALIGN_TOP_LEFT    0     // Windows TA_TOP | TA_LEFT
 #define DUI_ALIGN_TOP_CENTRE  6     // Windows TA_TOP | TA_CENTER
-#define DUI_TEXT_FONT         ("Segoe UI")
 
 {
   Real    g_dui_poly_x[8];
@@ -93,28 +92,28 @@ void dui_frame(Draw_Box p_box, Attributes &p_theme, Text p_role, Real p_x0, Real
   dui_line(p_box, p_x0, p_y1, p_x0, p_y0);
 }
 
-Real dui_text_width(Text p_text)
+Real dui_text_width(Attributes &p_theme, Text p_text)
 // ----------------------------------------------------------------
-// About how wide text is (12d can't measure text)
+// About how wide text is in the theme's font (12d can't measure text)
 // ----------------------------------------------------------------
 {
-  return DUI_CHAR_WIDTH * DUI_TEXT_SIZE * Text_length(p_text);
+  return dui_theme_char_width(p_theme) * dui_theme_font_size(p_theme) * Text_length(p_text);
 }
 
-Text dui_fit_text(Text p_text, Real p_width)
+Text dui_fit_text(Attributes &p_theme, Text p_text, Real p_width)
 // ----------------------------------------------------------------
 // The text cut short with "..." at the end if it is wider than width
 // ----------------------------------------------------------------
 {
   Integer l_keep = 0;
 
-  if (dui_text_width(p_text) <= p_width) return p_text;
-  l_keep = Floor(p_width / (DUI_CHAR_WIDTH * DUI_TEXT_SIZE)) - 3;
+  if (dui_text_width(p_theme, p_text) <= p_width) return p_text;
+  l_keep = Floor(p_width / (dui_theme_char_width(p_theme) * dui_theme_font_size(p_theme))) - 3;
   if (l_keep < 1) return "...";
   return Get_subtext(p_text, 1, l_keep) + "...";
 }
 
-Text dui_fit_text_end(Text p_text, Real p_width)
+Text dui_fit_text_end(Attributes &p_theme, Text p_text, Real p_width)
 // ----------------------------------------------------------------
 // The text cut short with "..." at the start if it is wider than
 // width (keeps the end of a path, where the file name is)
@@ -123,8 +122,8 @@ Text dui_fit_text_end(Text p_text, Real p_width)
   Integer l_keep   = 0;
   Integer l_length = Text_length(p_text);
 
-  if (dui_text_width(p_text) <= p_width) return p_text;
-  l_keep = Floor(p_width / (DUI_CHAR_WIDTH * DUI_TEXT_SIZE)) - 3;
+  if (dui_text_width(p_theme, p_text) <= p_width) return p_text;
+  l_keep = Floor(p_width / (dui_theme_char_width(p_theme) * dui_theme_font_size(p_theme))) - 3;
   if (l_keep < 1) return "...";
   return "..." + Get_subtext(p_text, l_length - l_keep + 1, l_length);
 }
@@ -158,6 +157,8 @@ void dui_draw_text(Draw_Box p_box, Attributes &p_theme, Text p_role, Real p_x, R
 // to the right, or centred on x if p_centre
 // ----------------------------------------------------------------
 {
+  Real l_size = 0.0;
+
   if (p_text == "") return;
   if (p_centre) {
     Set_text_align(p_box, DUI_ALIGN_TOP_CENTRE);
@@ -165,7 +166,8 @@ void dui_draw_text(Draw_Box p_box, Attributes &p_theme, Text p_role, Real p_x, R
     Set_text_align(p_box, DUI_ALIGN_TOP_LEFT);
   }
   Set_text_colour(p_box, dui_theme_red(p_theme, p_role), dui_theme_green(p_theme, p_role), dui_theme_blue(p_theme, p_role));
-  Draw_text(p_box, p_x, p_middle + DUI_TEXT_SIZE / 2.0 + 1.0, DUI_TEXT_SIZE, 0.0, p_text);
+  l_size = dui_theme_font_size(p_theme);
+  Draw_text(p_box, p_x, p_middle + l_size / 2.0 + 1.0, l_size, 0.0, p_text);
 }
 
 void dui_draw_folder_icon(Draw_Box p_box, Attributes &p_theme, Real p_x, Real p_middle)
@@ -200,11 +202,11 @@ void dui_draw_group(Draw_Box p_box, Attributes &p_theme, Real p_x0, Real p_y0, R
 // ----------------------------------------------------------------
 {
   Real l_line  = p_y1 - 9.0;
-  Text l_title = dui_fit_text(p_title, p_x1 - p_x0 - 24.0);
+  Text l_title = dui_fit_text(p_theme, p_title, p_x1 - p_x0 - 24.0);
 
   dui_frame(p_box, p_theme, DUI_C_GROUP_LINE, p_x0, p_y0, p_x1, l_line);
   if (l_title == "") return;
-  dui_fill     (p_box, p_theme, DUI_C_BACKGROUND, p_x0 + 6.0, l_line - 2.0, p_x0 + 12.0 + dui_text_width(l_title), l_line + 2.0);
+  dui_fill     (p_box, p_theme, DUI_C_BACKGROUND, p_x0 + 6.0, l_line - 2.0, p_x0 + 12.0 + dui_text_width(p_theme, l_title), l_line + 2.0);
   dui_draw_text(p_box, p_theme, DUI_C_TEXT, p_x0 + 9.0, l_line, FALSE, l_title);
 }
 
@@ -234,7 +236,7 @@ void dui_draw_tick(Draw_Box p_box, Attributes &p_theme, Real p_x0, Real p_y0, Re
     dui_line(p_box, l_bx0 + 3.0, l_middle - 1.0, l_bx0 + 5.5, l_middle - 4.0);
     dui_line(p_box, l_bx0 + 5.5, l_middle - 4.0, l_bx1 - 3.0, l_middle + 3.0);
   }
-  dui_draw_text(p_box, p_theme, l_text, l_bx1 + 6.0, l_middle, FALSE, dui_fit_text(p_label, p_x1 - l_bx1 - 6.0));
+  dui_draw_text(p_box, p_theme, l_text, l_bx1 + 6.0, l_middle, FALSE, dui_fit_text(p_theme, p_label, p_x1 - l_bx1 - 6.0));
 }
 
 void dui_draw_field(Draw_Box p_box, Attributes &p_theme, Real p_x0, Real p_y0, Real p_x1, Real p_y1, Text p_text, Integer p_focused, Integer p_hover, Integer p_enabled)
@@ -248,7 +250,7 @@ void dui_draw_field(Draw_Box p_box, Attributes &p_theme, Real p_x0, Real p_y0, R
   Text l_inside = DUI_C_FIELD;
   Text l_edge   = DUI_C_BORDER;
   Text l_colour = DUI_C_TEXT;
-  Text l_text   = dui_fit_text_end(p_text, p_x1 - p_x0 - 12.0);
+  Text l_text   = dui_fit_text_end(p_theme, p_text, p_x1 - p_x0 - 12.0);
   Real l_caret  = 0.0;
 
   if (p_hover  ) l_edge = DUI_C_ACCENT;
@@ -266,10 +268,10 @@ void dui_draw_field(Draw_Box p_box, Attributes &p_theme, Real p_x0, Real p_y0, R
   }
   dui_draw_text(p_box, p_theme, l_colour, p_x0 + 5.0, l_middle, FALSE, l_text);
   if (p_focused) {
-    l_caret = p_x0 + 6.0 + dui_text_width(l_text);
+    l_caret = p_x0 + 6.0 + dui_text_width(p_theme, l_text);
     if (l_caret > p_x1 - 3.0) l_caret = p_x1 - 3.0;
     dui_use_colour(p_box, p_theme, DUI_C_TEXT);
-    dui_line(p_box, l_caret, l_middle - 7.0, l_caret, l_middle + 7.0);
+    dui_line(p_box, l_caret, l_middle - dui_theme_font_size(p_theme) / 2.0, l_caret, l_middle + dui_theme_font_size(p_theme) / 2.0);
   }
 }
 
@@ -300,7 +302,7 @@ void dui_draw_button(Draw_Box p_box, Attributes &p_theme, Real p_x0, Real p_y0, 
     dui_draw_folder_icon(p_box, p_theme, (p_x0 + p_x1) / 2.0 - 8.0, l_middle);
     return;
   }
-  dui_draw_text(p_box, p_theme, l_text, (p_x0 + p_x1) / 2.0, l_middle, TRUE, dui_fit_text(dui_without_mnemonic(p_label), p_x1 - p_x0 - 8.0));
+  dui_draw_text(p_box, p_theme, l_text, (p_x0 + p_x1) / 2.0, l_middle, TRUE, dui_fit_text(p_theme, dui_without_mnemonic(p_label), p_x1 - p_x0 - 8.0));
 }
 
 void dui_draw_message(Draw_Box p_box, Attributes &p_theme, Real p_x0, Real p_y0, Real p_x1, Real p_y1, Text p_text, Integer p_error)
@@ -313,7 +315,7 @@ void dui_draw_message(Draw_Box p_box, Attributes &p_theme, Real p_x0, Real p_y0,
   if (p_error) l_colour = DUI_C_ERROR_TEXT;
   dui_fill     (p_box, p_theme, DUI_C_MESSAGE   , p_x0, p_y0, p_x1, p_y1);
   dui_frame    (p_box, p_theme, DUI_C_GROUP_LINE, p_x0, p_y0, p_x1, p_y1);
-  dui_draw_text(p_box, p_theme, l_colour, p_x0 + 5.0, (p_y0 + p_y1) / 2.0, FALSE, dui_fit_text(p_text, p_x1 - p_x0 - 10.0));
+  dui_draw_text(p_box, p_theme, l_colour, p_x0 + 5.0, (p_y0 + p_y1) / 2.0, FALSE, dui_fit_text(p_theme, p_text, p_x1 - p_x0 - 10.0));
 }
 
 void dui_draw_popup(Draw_Box p_box, Attributes &p_ui, Attributes &p_theme)
@@ -354,9 +356,14 @@ void dui_draw_popup(Draw_Box p_box, Attributes &p_ui, Attributes &p_theme)
 
   // title bar and close cross (red when the mouse is on it)
   l_rows_top = l_y1 - DUI_POPUP_TITLE;
-  dui_fill(p_box, p_theme, DUI_C_POPUP_TITLE, l_x0, l_rows_top, l_x1, l_y1);
+  // the title bar is lit while the mouse is on it or holds it (it can be dragged)
+  if (l_hover == DUI_POPUP_TITLEBAR || dui_get_integer(p_ui, DUI_ATTR_POP_MOVING)) {
+    dui_fill(p_box, p_theme, DUI_C_BUTTON_HOVER, l_x0, l_rows_top, l_x1, l_y1);
+  } else {
+    dui_fill(p_box, p_theme, DUI_C_POPUP_TITLE, l_x0, l_rows_top, l_x1, l_y1);
+  }
   dui_draw_text(p_box, p_theme, DUI_C_TEXT, l_x0 + 6.0, l_rows_top + DUI_POPUP_TITLE / 2.0, FALSE,
-                dui_fit_text_end(dui_get_text(p_ui, DUI_ATTR_POP_TITLE), l_x1 - l_x0 - DUI_POPUP_TITLE - 12.0));
+                dui_fit_text_end(p_theme, dui_get_text(p_ui, DUI_ATTR_POP_TITLE), l_x1 - l_x0 - DUI_POPUP_TITLE - 12.0));
   if (l_hover == DUI_POPUP_CLOSE) dui_fill(p_box, p_theme, DUI_C_CLOSE, l_x1 - DUI_POPUP_TITLE, l_rows_top, l_x1, l_y1);
   l_cx = l_x1 - DUI_POPUP_TITLE / 2.0;
   l_cy = l_rows_top + DUI_POPUP_TITLE / 2.0;
@@ -390,7 +397,7 @@ void dui_draw_popup(Draw_Box p_box, Attributes &p_ui, Attributes &p_theme)
     if (l_icon == DUI_ICON_FOLDER || l_icon == DUI_ICON_UP) dui_draw_folder_icon(p_box, p_theme, l_x0 + 6.0, l_middle);
     if (l_icon == DUI_ICON_FILE) dui_draw_file_icon(p_box, p_theme, l_colour, l_x0 + 6.0, l_middle);
     if (l_icon != DUI_ICON_NONE) l_text_x = l_x0 + 28.0;
-    dui_draw_text(p_box, p_theme, l_colour, l_text_x, l_middle, FALSE, dui_fit_text(l_text, l_right - l_text_x - 4.0));
+    dui_draw_text(p_box, p_theme, l_colour, l_text_x, l_middle, FALSE, dui_fit_text(p_theme, l_text, l_right - l_text_x - 4.0));
   }
 
   // scroll bar
@@ -419,16 +426,21 @@ void dui_draw(Draw_Box p_box, Attributes &p_ui, Attributes &p_theme)
   Integer l_enabled = 0;
   Integer l_hover   = 0;
   Integer l_pressed = dui_get_integer(p_ui, DUI_ATTR_PRESSED);
+  Real    l_mouse_x = 0.0;
+  Real    l_mouse_y = 0.0;
   Real    l_x0 = 0.0, l_y0 = 0.0, l_x1 = 0.0, l_y1 = 0.0;
   Text    l_label   = "";
 
   dui_forget_colour();
   Clear(p_box, dui_theme_red(p_theme, DUI_C_BACKGROUND), dui_theme_green(p_theme, DUI_C_BACKGROUND), dui_theme_blue(p_theme, DUI_C_BACKGROUND));
-  Set_text_font(p_box, DUI_TEXT_FONT);
+  Set_text_font(p_box, dui_theme_font_name(p_theme));
   Set_bk_mode  (p_box, 1);
 
-  // nothing under the popup lights up
-  if (dui_popup_owner(p_ui) == 0) l_hover = dui_at(p_ui, dui_get_real(p_ui, DUI_ATTR_MOUSE_X), dui_get_real(p_ui, DUI_ATTR_MOUSE_Y));
+  // nothing lights up under the popup, or anywhere while the popup
+  // closes on a click outside it
+  l_mouse_x = dui_get_real(p_ui, DUI_ATTR_MOUSE_X);
+  l_mouse_y = dui_get_real(p_ui, DUI_ATTR_MOUSE_Y);
+  if (dui_popup_modal_at(p_ui, l_mouse_x, l_mouse_y) == FALSE) l_hover = dui_at(p_ui, l_mouse_x, l_mouse_y);
 
   for (l_widget = 1; l_widget <= dui_widgets(p_ui); ++l_widget) {
     l_kind    = dui_widget_kind(p_ui, l_widget);
@@ -443,9 +455,9 @@ void dui_draw(Draw_Box p_box, Attributes &p_ui, Attributes &p_theme)
       } break;
       case DUI_LABEL : {
         if (l_enabled) {
-          dui_draw_text(p_box, p_theme, DUI_C_TEXT, l_x0, (l_y0 + l_y1) / 2.0, FALSE, dui_fit_text(l_label, l_x1 - l_x0));
+          dui_draw_text(p_box, p_theme, DUI_C_TEXT, l_x0, (l_y0 + l_y1) / 2.0, FALSE, dui_fit_text(p_theme, l_label, l_x1 - l_x0));
         } else {
-          dui_draw_text(p_box, p_theme, DUI_C_TEXT_DISABLED, l_x0, (l_y0 + l_y1) / 2.0, FALSE, dui_fit_text(l_label, l_x1 - l_x0));
+          dui_draw_text(p_box, p_theme, DUI_C_TEXT_DISABLED, l_x0, (l_y0 + l_y1) / 2.0, FALSE, dui_fit_text(p_theme, l_label, l_x1 - l_x0));
         }
       } break;
       case DUI_TICK : {

@@ -32,13 +32,17 @@ You need `g++`, `cpp`, `python3` and Pillow.
    (`type errors` should stay 0). The program is built with AddressSanitizer
    and UndefinedBehaviorSanitizer.
 4. `preview.cpp` keeps each frame's draw calls in order. `topng.py` replays them
-   into `out/<name>.png` with Liberation Sans in place of Segoe UI.
+   into `out/<name>.png`, with Liberation Sans at 104% in place of Segoe UI
+   (as wide as Segoe UI in 12d) and Inter for Inter. The panel's size and
+   position (`Get_widget_size`, `Get_widget_position`) are made up: a 7
+   pixel margin round the drawing, and the Keys row unless it is collapsed.
 
 ## Scenarios
 
-`scenarios/*.txt` has one command per line; `#` starts a comment. Two header
-comments are read: `# args: -dark` is the macro's command line, and
-`# vscode: ok` makes VS Code "answer". Coordinates are from the top left of
+`scenarios/*.txt` has one command per line; `#` starts a comment. Three header
+comments are read: `# args: -dark` is the macro's command line,
+`# vscode: ok` makes VS Code "answer", and `# 12d theme: Dark` is what
+`Get_active_theme_name` gives (for `-auto`). Coordinates are from the top left of
 the box, as in a screenshot.
 
 | Command | What it does |

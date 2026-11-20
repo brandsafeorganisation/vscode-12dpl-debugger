@@ -11,9 +11,11 @@ the original panel; this one is built by hand.
 | --- | --- |
 | ![light](screenshots/light.png) | ![dark](screenshots/dark.png) |
 | ![help](screenshots/help.png) | ![file browser](screenshots/dark_browse_macros.png) |
+| ![Inter font](screenshots/modern.png) (`-modern`) | ![file list dragged](screenshots/drag_pinned_used.png) (dragged, so it stays open) |
 
 The screenshots come from the Linux preview in `tools/draw_panel_preview`, not from
-12d. It uses a different font, so text widths differ a little from 12d's.
+12d. It draws Segoe UI's text with Liberation Sans at 104%, which came out as
+wide as Segoe UI in screenshots of 12d.
 
 ## Building and running
 
@@ -22,15 +24,47 @@ Compile `compile_debug_draw_panel.4dm` with `cc4d.exe` from this folder (as
 relative path, which works when `cc4d.exe` is run directly. 12d's own Compile
 option looks for includes in the project folder, so it won't find them.
 
-The theme comes from the macro's command line (Macro Arguments in 12d's
-Run/Compile panels):
+Options come from the macro's command line (Macro Arguments in 12d's
+Run/Compile panels). A `-`, `--` or `/` in front is optional, and case doesn't
+matter. Anything else is ignored.
 
-| Argument | Theme |
+| Argument | What it does |
 | --- | --- |
-| none, `-light`, `/light`, `light`, `--theme=light` | light |
-| `-dark`, `/dark`, `dark`, `--theme=dark` | dark |
+| none, `-light`, `--theme=light` | light theme |
+| `-dark`, `--theme=dark` | dark theme |
+| `-auto`, `--theme=auto` | dark if 12d's theme name (`Get_active_theme_name`) has "dark" in it, else light |
+| `-modern` | text in Inter instead of Segoe UI |
+| `font=<name>` | text in any installed font, e.g. `font="Segoe UI Variable Text"` |
+| `-fill` | no border gap and no gap in the drawing's vertical group (`Set_border(group, 0, 0)`, `Set_gap(group, 0)`) |
+| `grow=<pixels>` | once the panel is shown, make the drawing that many pixels wider and taller (`Set_size`) |
+| `-keys` | show the Keys box (it is collapsed and hidden otherwise) |
 
-The last argument that names a theme wins. Other arguments are ignored.
+The last theme argument wins.
+
+### Fonts
+
+Segoe UI is the default, as in 12d's own panels; every Windows has it.
+`-modern` uses [Inter](https://rsms.me/inter/), which isn't part of Windows:
+install it first (download it, open `Inter.ttc` or the `.ttf` files and click
+**Install**, then restart 12d). If a font isn't installed, Windows draws a
+fallback font instead. On Windows 11, `font="Segoe UI Variable Text"` is a
+newer looking font with nothing to install.
+
+12d can't measure text, so each font has an estimate of a character's width
+(`DUI_FONT_*_WIDTH`). The label and buttons are sized from it. A font given
+with `font=` gets a wide estimate, so text may stop a little early.
+
+### The margin round the drawing
+
+12d leaves a margin round the Draw_Box in the panel's own colour (white in
+the screenshots). It is there without the vertical group too, so it seems
+to belong to the panel. `-fill` takes out the group's border and gap, which
+is all the documented calls can do. `grow=<pixels>` tries `Set_size` on the
+Draw_Box after the panel is shown. That may only make the panel bigger,
+and it can only cover the right and bottom margins, because there is no
+call to move a widget. Help lists the sizes and positions 12d reports for
+the panel and the drawing (`Get_widget_size`, `Get_widget_position`) and
+12d's theme name, to see what the options change.
 
 ## Layout
 
@@ -81,14 +115,17 @@ switch (act) {   // DUI_ACT_REDRAW / CLICK / TICK / PICK / ENTER, with the widge
 | `DUI_BUTTON` | A push button (`DUI_ACT_CLICK`). An `&` in the label is dropped, as in 12d. |
 | `DUI_BROWSE` | The folder button at the end of a file field. |
 | `DUI_MESSAGE` | The message line. `dui_set_message(..., TRUE)` shows the text in red. |
-| popup | One list over the widgets, like a choice box's list. It has a title bar, a close cross, row icons and a scroll bar (click the track to page, or drag it). A row with a value can be picked (`DUI_ACT_PICK`). A row with no value is plain text, which the help uses. |
+| popup | One list over the widgets, like a choice box's list. It has a title bar, a close cross, row icons and a scroll bar (click the track to page, or drag it). A row with a value can be picked (`DUI_ACT_PICK`). A row with no value is plain text, which the help uses. Drag the title bar to move it: once moved it is pinned, and stays open while the widgets beside it are used. A popup that wasn't moved closes on a click outside it. |
 
 `dui_files_open()` / `dui_files_pick()` fill the popup with a folder's sub folders and
 matching files. A Draw_Box panel can't open 12d's own file dialog, so this
 stands in for the File_Box's browse button.
 
-Themes are records of colours by role (`DUI_C_TEXT`, `DUI_C_ACCENT`, ...).
-To add a theme, add a case to `dui_theme_set()`.
+Themes are records of colours by role (`DUI_C_TEXT`, `DUI_C_ACCENT`, ...),
+plus the font, its size and its width estimate (`dui_theme_font()`).
+To add a theme, add a case to `dui_theme_set()`. Text measuring functions
+(`dui_text_width`, `dui_fit_text`) take the theme, so layouts can size
+widgets to their text.
 
 ## What was learnt about the Draw_Box (from Cubeland)
 
@@ -106,7 +143,8 @@ To add a theme, add a case to `dui_theme_set()`.
   `double_click_lb`, `mouse_leave`, with `"x y"` in the message) but no key
   presses. A small input box ("Keys") under the drawing keeps the keyboard.
   Its `keystroke` events are passed to the focused field, and it is emptied
-  after each one.
+  after each one. It is collapsed (`Set_collapsed`) before the panel is
+  shown and hidden (`Set_visible`) after, so it takes no room.
 - `Set_sizing_constraints(box, 2, 2)` and `Set_notify_resizing(panel)` let the
   drawing fill a resized panel (`Panel_Resize`).
 
@@ -121,7 +159,11 @@ This was written and run on Linux only, in the preview. Things to check in 12d:
   itself.
 - `List_subfolders_in_folder` / `List_files_in_folder`: whether they return
   names or full paths (both are handled).
-- Text placement with Segoe UI, and the `DUI_CHAR_WIDTH` estimate.
+- Whether the Keys box still gets the typing while collapsed and hidden. If
+  it doesn't, run with `-keys`.
+- What `-fill` and `grow=<pixels>` do to the margin (see Help for the sizes).
+- `Get_active_theme_name`'s names, for `-auto`.
+- Text widths with Inter and with Segoe UI at the new text size (13).
 - `request_debug_build()` writes its progress into a message box that isn't on
   the panel. The drawn line shows "Starting the debugger in VS Code..." before
   it is called, and its last message after it returns. The "Waiting for VS

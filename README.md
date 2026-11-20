@@ -16,8 +16,9 @@ step over / in / out, pause, call stack, and variable values.
 ### Experimental: themed panel
 
 `companions/draw_panel` has the same panel drawn in a Draw_Box, with a light
-and a dark theme (`-dark` on its command line). It reuses the original
-panel's code and is built by hand; see its README.
+and a dark theme (`-dark`, or `-auto` to follow 12d), a choice of font
+(`-modern` for Inter) and a file list that can be dragged. It reuses the
+original panel's code and is built by hand; see its README.
 
 ## How it works
 

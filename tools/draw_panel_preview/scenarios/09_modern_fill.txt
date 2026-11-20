@@ -1,0 +1,9 @@
+# args: -modern -fill grow=12 -keys
+# The Inter font, the fill options (the drawing grows 12 pixels once
+# shown) and Help with the panel's measurements at its end
+snap modern
+click 315 353
+click 380 255
+move 200 200
+snap modern_help_end
+quit
